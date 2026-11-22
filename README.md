@@ -1,6 +1,8 @@
 # Suno
 
-Suno is a responsive, bilingual prototype for discussing a prospective deceased organ or tissue donor's wish with family. It supports questions and source-backed exploration. It does **not** create an official pledge or legal consent, determine medical suitability, or match organs.
+Suno is a bilingual donation coordination demo for donors and hospital coordinators. It connects a public blood volunteer workflow with a separate organ and tissue information flow, family conversations, and a traceable coordinator workspace.
+
+Suno does not decide medical eligibility, blood compatibility, clinical urgency, transplant allocation, doctor quality, legal consent, or official pledge status. A blood response is availability only. An appointment is a coordination record. A recorded organ donation wish and a family acknowledgement are not an official pledge or legal consent.
 
 ## Quick start
 
@@ -11,37 +13,51 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Click **Try the 90-second demo**. No account or API key is required.
+Open `http://localhost:3000`. The landing page has separate **Try donor portal** and **Try coordinator view** entries. All default records are clearly synthetic and live in the server process memory.
 
-## Judge demo
+## Connected demo walkthrough
 
-1. The seeded demo starts with a clearly synthetic donor wish and invitations for Mother and Brother. Open **My wish**, edit the statement, and save it.
-2. In **Family circle**, open Mother's private view. Switch to Hindi and ask `क्या अंगदान के बाद शरीर का चेहरा बदल जाएगा?`.
-3. Read the answer, exact NOTTO excerpt, page reference, and source link. Click **We discussed this**.
-4. Open Brother's view. Ask `Will the hospital treat me differently?`. The question remains open because the curated library does not support an answer.
-5. Return to the donor tab and open **Summary**. Refresh the page if the donor tab was left open while family tabs changed. Edit or print the summary and open the official NOTTO link.
-
-**Start a family conversation** creates an empty demo circle. Invite links are copyable and work within the running server for 24 hours. Suno does not send messages.
-
-## What is real and what is simulated
-
-The interface, server-enforced donor cookie, random invite tokens, expiry, per-invite response isolation, source selection, deletion, bilingual flows, and print view work. Demo data and invitations live **only in server memory**. They disappear on server restart or deployment instance change. This is not a durable or production-ready invitation service. The demo writing aid preserves the original words inside an optional gentle opening and closing. The donor reviews and edits the suggestion before saving.
-
-Without `GEMINI_API_KEY`, the concern engine uses predefined, reviewed examples and labels the site **Demo mode · synthetic data**. It supports the body/funeral and family-cost examples and a limited family-discussion example. Other questions return an honest unsupported result. It does not pretend that these answers are generated live.
-
-With `GEMINI_API_KEY`, Gemini may classify a free-text concern and select an excerpt. The server validates the structured category, source ID, and exact excerpt and publishes only a reviewed answer tied to that excerpt. Failed or unsupported model output falls back to the demo resolver. The app still remains an ephemeral demo. This design avoids showing unreviewed factual model text.
+1. Open the coordinator view. Open **Blood requests**, select the seeded O+ request, and publish it if it is a draft.
+2. Switch to the donor view. Open **Blood requests** and choose **I can volunteer**.
+3. Switch back to the coordinator view. The request detail now shows the donor response. Select **Propose appointment**.
+4. Return to the donor view, open **Appointments**, and confirm or decline the proposed time.
+5. Open **Organ & tissue** and then **My wish**. Write a personal statement, try the optional gentle wording aid, review it, and save it.
+6. Open **Family circle**. Use the seeded Mother and Brother invitations or create another private link. Invitation tokens are random and expire after 24 hours.
+7. Open Mother’s invitation. Ask the Hindi question `क्या अंगदान के बाद शरीर का चेहरा बदल जाएगा?` to see a reviewed NOTTO excerpt. Ask Brother an unsupported hospital question to see the honest unanswered state.
+8. Return to **Family circle** and open the editable conversation summary. The official NOTTO information and pledge links remain external routes.
+9. Open **Enquiries** as the donor and request coordinator follow-up. Switch to the coordinator view to see the enquiry and add a donor-visible response.
 
 ## Architecture
 
-- Next.js App Router, React, TypeScript, responsive CSS, Lucide icons.
-- `/api/bootstrap`: starts a demo and sets a random HTTP-only, SameSite cookie.
-- `/api/circle`: donor-only wish, invitations, summary data, and circle deletion.
-- `/api/invite/[token]`: token-limited family view, response, discussion state, and own-response deletion.
-- `lib/sources.ts`: the small, reviewed source library and safe demo resolver.
-- `lib/ai.ts`: optional model routing with Zod validation and a strict excerpt match.
-- `lib/store.ts`: ephemeral in-memory state. No sensitive wish or question is placed in the invitation URL.
+- Next.js App Router, React, TypeScript, responsive CSS, Lucide icons, and Zod.
+- `lib/store.ts` is the server-side demo domain. It stores the hospital, blood requests, volunteer responses, appointments, organ enquiries, activity history, and family circles in memory.
+- `/api/bootstrap` creates a donor or coordinator demo session and sets HTTP-only role cookies.
+- `/api/portal` enforces the active role on every read and write. Coordinator responses include internal notes; donor responses never do.
+- `/api/circle` and `/api/invite/[token]` retain the private, expiring family invitation flow.
+- `lib/sources.ts` contains the small reviewed NOTTO library. `lib/ai.ts` optionally lets Gemini classify a question, but the server only publishes a pre-approved answer when the returned source ID and exact excerpt match the reviewed library.
+- `lib/translations.ts` is the shared English/Hindi copy system for the donor and essential coordinator flows.
 
-The source library currently contains a brief body/funeral passage and a family-cost passage from NOTTO's [Myths vs Facts](https://notto.mohfw.gov.in/WriteReadData/Portal/News/941_1_Myths_Vs_Facts.pdf), plus a family-discussion passage from the [NOTTO transplant manual, Form 7 note](https://notto.mohfw.gov.in/WriteReadData/Portal/News/848_1_NOTTO_TRANSPLANT_MANUAL-final_version.pdf). Every supported answer shows its title, exact English excerpt, page reference, and original link. The official [NOTTO website](https://notto.mohfw.gov.in/) and [official pledge portal](https://notto.abdm.gov.in/) are external links; Suno does not reproduce their pledge process.
+## Status model
+
+Blood requests use `draft → published → closed`.
+
+Volunteer responses use `available → withdrawn` or `available → appointment proposed`.
+
+Appointments use `proposed → confirmed → completed`, `proposed → declined`, and `proposed or confirmed → cancelled`. Completed means administrative attendance was recorded; it does not imply a clinically successful donation.
+
+Enquiries use `open → in progress → resolved`.
+
+## What is real and what is simulated
+
+The UI, server-side role checks, cryptographically random invitation tokens, expiry checks, blood request transitions, duplicate-response prevention, appointment actions, donor/coordinator data separation, activity timeline, print styles, source validation, and deletion/withdrawal controls are implemented.
+
+The default hospital, staff, donor, blood request, and enquiry records are synthetic. The demo store is ephemeral and resets when the Node process restarts or the deployment instance changes. No invitation message is sent. The demo writing aid keeps the original wish text and adds only a gentle frame; the donor reviews it before saving.
+
+Without `GEMINI_API_KEY`, source question handling uses the predefined, reviewed examples and is labelled demo mode. Questions outside the reviewed examples remain unanswered. With `GEMINI_API_KEY`, Gemini may classify a question and select a reviewed excerpt; the server validates the category, source ID, and exact excerpt and still displays only the reviewed answer text.
+
+## Official sources
+
+The curated source library starts with the [NOTTO website](https://notto.mohfw.gov.in/), the [NOTTO organ and tissue pledge guidance](https://notto.mohfw.gov.in/WriteReadData/Portal/News/848_1_NOTTO_TRANSPLANT_MANUAL-final_version.pdf), and [NOTTO Myths vs Facts](https://notto.mohfw.gov.in/WriteReadData/Portal/News/941_1_Myths_Vs_Facts.pdf). Each supported family answer displays its title, exact supporting excerpt, page or section, and original URL.
 
 ## Checks
 
@@ -51,16 +67,16 @@ npm test
 npm run build
 ```
 
-The tests cover Hindi source selection, unsupported concerns, token expiry, invitation states, per-invite view isolation, and deletion. Before any real use, add an end-to-end browser test suite, accessibility audit with assistive technology, reviewed translations, and a content review with NOTTO or qualified domain experts.
+The automated suite covers supported Hindi source selection, unsupported questions, citation scope, invitation expiry and isolation, family response deletion, blood request transitions, duplicate volunteer responses, appointment transitions, donor isolation, and hidden internal coordinator notes.
 
-## Deployment
+## Configuration and deployment
 
-For a **demo deployment**, push the repository to GitHub and create a Node web service on Render, Railway, or a similar host that keeps one Node process running. Set the build command to `npm install && npm run build` and the start command to `npm run start`. Use one instance, expose port 3000 (or the host-provided `PORT`), and set no environment variables for the predefined demo. Keep the deployment labelled as a demo. The in-memory data resets whenever the process restarts. Serverless deployments such as Vercel may reset or split that state and are therefore suitable only for the landing page, not the full invitation demonstration.
+`.env.example` contains the optional `GEMINI_API_KEY` and `GEMINI_MODEL` values. Keep the key on the server and never prefix it with `NEXT_PUBLIC_`.
 
-For optional Gemini routing, set `GEMINI_API_KEY` in the host's server-side environment and optionally `GEMINI_MODEL` as shown in `.env.example`. Never expose the key with a `NEXT_PUBLIC_` prefix.
+For a demo deployment, push this repository to GitHub and create a single-instance Node service on Render, Railway, or a similar host. Use build command `npm install && npm run build` and start command `npm run start`. The ephemeral store requires one running Node process for the connected donor/coordinator demo.
 
-For real invitations and lasting records, replace `lib/store.ts` with a database, server-side access control, a consented invitation delivery flow, expiry cleanup, rate limits, and a privacy review. Do not deploy the ephemeral store as a real donor service.
+For persistent invitations and records, replace the in-memory store with a database, add durable server-side authentication and authorization, invitation delivery with consent, expiry cleanup, rate limits, audit logging that excludes private text, and a privacy review. Do not use the demo store as a real donor service.
 
-## Limitations
+## Remaining limitations
 
-The curated source set is intentionally narrow. It cannot answer clinical, religious, legal, eligibility, compatibility, or many hospital-process questions. A family member's acknowledgement is understanding only. The summary is editable and is a conversation record, not a legal document. English and Hindi main flows are implemented; the source excerpt remains in its original English for review.
+The source library is intentionally narrow and cannot answer clinical, religious, legal, eligibility, compatibility, or many hospital-process questions. English and Hindi UI copy is provided for the main donor journey; source excerpts remain in their original language for review. A production release still needs an accessibility audit with assistive technology, reviewed translations, end-to-end browser coverage, and domain review of all operational content.

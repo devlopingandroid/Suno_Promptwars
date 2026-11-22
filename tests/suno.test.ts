@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { answerConcern, sources } from '../lib/sources';
-import { addInvite, createCircle, deleteCircle, deleteOwnResponse, findInvite, getCircle, getInviteView, markDiscussed, safeDonorView, submitResponse } from '../lib/store';
+import { addEnquiry, addInvite, coordinatorView, createCircle, deleteCircle, deleteOwnResponse, donorBloodView, ensureDemoData, expressAvailability, findInvite, getCircle, getInviteView, markDiscussed, proposeAppointment, publicBloodRequests, resetDemoData, safeDonorView, submitResponse, updateAppointment } from '../lib/store';
 
 describe('source-grounded answers',()=>{
   it('answers a Hindi body concern with the reviewed NOTTO excerpt',()=>{
@@ -55,5 +55,33 @@ describe('private invitation lifecycle',()=>{
     expect(findInvite(first.token,first.expiresAt+1)).toBeNull();
     expect(safeDonorView(c).invites).toHaveLength(3);
     deleteCircle(c.id);
+  });
+});
+
+describe('blood coordination workflow',()=>{
+  it('enforces duplicate responses and valid appointment transitions',()=>{
+    resetDemoData();
+    const request=publicBloodRequests()[0];
+    const first=expressAvailability(request.id,'donor-a');
+    expect('response' in first).toBe(true);
+    expect(expressAvailability(request.id,'donor-a')).toEqual({error:'You already expressed availability for this request.'});
+    if(!('response' in first) || !first.response) throw new Error('response missing');
+    const proposed=proposeAppointment(request.id,first.response.id);
+    expect(proposed?.status).toBe('proposed');
+    expect(updateAppointment(proposed!.id,'donor-a','confirmed')?.status).toBe('confirmed');
+    expect(updateAppointment(proposed!.id,null,'completed')?.status).toBe('completed');
+    expect(updateAppointment(proposed!.id,null,'cancelled')).toBeNull();
+  });
+  it('keeps internal coordinator notes out of donor-facing records',()=>{
+    resetDemoData();
+    const donor=donorBloodView('unrelated-donor');
+    expect(JSON.stringify(donor)).not.toContain('Internal notes never appear');
+    expect(JSON.stringify(coordinatorView())).toContain('Internal notes never appear');
+  });
+  it('isolates donor enquiries by donor id',()=>{
+    resetDemoData();
+    addEnquiry('donor-a','Please explain the family discussion route.');
+    expect(donorBloodView('donor-b').responses).toHaveLength(0);
+    expect(JSON.stringify(coordinatorView().enquiries)).toContain('family discussion route');
   });
 });
