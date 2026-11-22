@@ -9,7 +9,7 @@ import { POST as circleWrite } from "../app/api/circle/route";
 import { POST as familyWrite } from "../app/api/invite/[token]/route";
 import { createSession } from "../lib/session";
 import { createCircle, withWorkspace } from "../lib/store";
-import { validateCitation, resolveConcern } from "../lib/ai";
+import { validateCitation } from "../lib/ai";
 import { sources } from "../lib/sources";
 
 const req = (
@@ -21,6 +21,7 @@ const req = (
   new NextRequest(`http://localhost:3000/api/${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers: {
+      "content-type": "application/json",
       ...(sessionId ? { cookie: `suno_session=${sessionId}` } : {}),
       ...(origin ? { origin } : {}),
     },

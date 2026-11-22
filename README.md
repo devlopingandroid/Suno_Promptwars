@@ -30,6 +30,8 @@ Open `http://localhost:3000`. The landing page has separate **Try donor portal**
 ## Architecture
 
 - Next.js App Router, React, TypeScript, responsive CSS, Lucide icons, and Zod.
+- `app/page.tsx` manages the session and lazy-loads the 12 focused screens in `components/screens/`. Reusable navigation, panels, status chips, and focus management live in `components/portal-ui.tsx`.
+- `lib/portal-view.ts` owns role-specific response projections. The client contracts in `lib/portal-types.ts` follow these projections, so donor data never depends on the full internal coordinator record shape.
 - `lib/store.ts` is the server-side demo domain. It stores the hospital, blood requests, volunteer responses, appointments, organ enquiries, activity history, and family circles in memory.
 - `/api/bootstrap` creates a donor or coordinator demo session and sets HTTP-only role cookies.
 - `/api/portal` enforces the active role on every read and write. Coordinator responses include internal notes; donor responses never do.
@@ -67,6 +69,23 @@ npm test
 npm run build
 ```
 
+GitHub Actions runs these checks on pushes and pull requests, followed by a high/critical production dependency audit. TypeScript rejects unused declarations and checks English/Hindi translation keys for parity.
+
+### Evaluation improvements and evidence
+
+The external evaluator owns the final score. These changes improve the underlying application; they do not set or predict an evaluation score.
+
+| Factor            | Implemented improvement                                                                                                                                                                                                           | Verification                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Code quality      | Focused screen modules, shared API transport, shared role projections, inferred client contracts, centralized limits, typed translation keys                                                                                      | Strict typecheck and production build                                                                    |
+| Efficiency        | Lazy screen chunks, indexed invitation lookup, one-pass donor request projection, reused date formatter, bounded session and rate-limit stores, no remote AI call for unsupported questions                                       | Bundle measurement script and lifecycle/request regressions                                              |
+| Security          | Byte-limited streamed JSON reads, origin checks compatible with HTTPS termination, cross-site request rejection, private response headers, session/workspace cleanup, safe AI logging, stronger production CSP                    | Forged origin, Unicode/stream size, session eviction and response deletion race tests                    |
+| Testing           | Existing connected workflow suite plus regression coverage for request boundaries, expiry, limits and AI failures; automated CI                                                                                                   | `npm test`                                                                                               |
+| Accessibility     | Focus after section navigation, current-section announcements, corrected navigation semantics, Hindi document language, invitation choice state, disabled controls during writes, reduced motion and stronger text/focus contrast | Desktop/mobile and English/Hindi browser checks; further assistive-technology review remains recommended |
+| Problem alignment | Connected donor/coordinator workflows, one open follow-up per donor/question, reviewed evidence with honest unsupported answers, user-controlled family conversation                                                              | Existing end-to-end API workflow tests and browser walkthrough                                           |
+
+After a production build, run `node scripts/measure-bundle.mjs` to measure the JavaScript referenced by the landing page. Pass another checkout directory to compare builds. The script reports raw and gzip bytes; it does not measure Core Web Vitals or predict evaluator scores.
+
 The automated suite covers supported Hindi source selection, unsupported questions, citation scope, invitation expiry and isolation, family response deletion, blood request transitions, duplicate volunteer responses, appointment transitions, donor isolation, and hidden internal coordinator notes.
 
 ## Configuration and deployment
@@ -86,6 +105,8 @@ gcloud run deploy suno --source . --region asia-south1 --allow-unauthenticated -
 ```
 
 Cloud Build and Cloud Run APIs must be enabled, and the Google Cloud project needs billing enabled. The `--max 1` setting keeps the in-memory demo data on one instance so donor and coordinator sessions can see the same changes. The data is still temporary and resets when the instance restarts. For GitHub continuous deployment, connect this repository in Cloud Run and use the same service name, region, public access, and maximum instance setting. Keep `GEMINI_API_KEY` in Cloud Run's server-side environment or Secret Manager; never commit it to the repository.
+
+Cloud Run must preserve the public `Host` and `X-Forwarded-Proto` headers for browser write-origin validation. The app does not trust `X-Forwarded-Host`. Its rate limiter is best-effort, per process, and assumes forwarded client IP headers come from your trusted ingress. Use an ingress-level limiter for production abuse protection. Sessions expire after 24 hours; cleanup and capacity eviction also release their workspace records and invitation indexes. This remains a temporary, single-process demo rather than a persistent clinical system.
 
 For persistent invitations and records, replace the in-memory store with a database, add durable server-side authentication and authorization, invitation delivery with consent, expiry cleanup, rate limits, audit logging that excludes private text, and a privacy review. Do not use the demo store as a real donor service.
 

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   answerForInvite,
   deleteOwnResponse,
@@ -14,24 +14,11 @@ import { readBody, privateJson } from "@/lib/session";
 export const runtime = "nodejs";
 type Context = { params: Promise<{ token: string }> };
 const unavailable = () =>
-  NextResponse.json(
-    { error: "This invitation is invalid or has expired." },
-    { status: 404, headers: { "Cache-Control": "no-store" } },
-  );
+  privateJson({ error: "This invitation is invalid or has expired." }, 404);
 export async function GET(_req: NextRequest, { params }: Context) {
   const { token } = await params;
   const view = safeFamilyView(token);
-  return view
-    ? NextResponse.json(
-        { invite: view, mode: "demo" },
-        {
-          headers: {
-            "Cache-Control": "no-store",
-            "Referrer-Policy": "no-referrer",
-          },
-        },
-      )
-    : unavailable();
+  return view ? privateJson({ invite: view, mode: "demo" }) : unavailable();
 }
 export async function POST(req: NextRequest, { params }: Context) {
   const { token } = await params;
@@ -40,7 +27,7 @@ export async function POST(req: NextRequest, { params }: Context) {
   try {
     b = await readBody(req);
   } catch {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    return privateJson({ error: "Invalid request." }, 400);
   }
   if (b.action === "follow-up") {
     const found = findInvite(token);
@@ -60,19 +47,19 @@ export async function POST(req: NextRequest, { params }: Context) {
   }
   if (b.action === "delete") {
     deleteOwnResponse(token);
-    return NextResponse.json({ invite: safeFamilyView(token) });
+    return privateJson({ invite: safeFamilyView(token) });
   }
   if (b.action === "discussed") {
     const view = markDiscussed(token);
     return view
-      ? NextResponse.json({ invite: view })
-      : NextResponse.json({ error: "Ask a question first." }, { status: 400 });
+      ? privateJson({ invite: view })
+      : privateJson({ error: "Ask a question first." }, 400);
   }
   if (
     b.action === "respond" &&
     (b.kind === "understand" || b.kind === "not-ready")
   ) {
-    return NextResponse.json({ invite: submitResponse(token, b.kind) });
+    return privateJson({ invite: submitResponse(token, b.kind) });
   }
   if (
     b.action === "respond" &&
@@ -81,13 +68,24 @@ export async function POST(req: NextRequest, { params }: Context) {
   ) {
     const valid = answerForInvite(token, b.question);
     if (!valid)
-      return NextResponse.json(
+      return privateJson(
         { error: "Please enter a question under 600 characters." },
-        { status: 400 },
+        400,
       );
+    const revision = findInvite(token)!.invite.revision;
     const { result, mode } = await resolveConcern(b.question);
+    const latest = findInvite(token);
+    if (!latest) return unavailable();
+    if (latest.invite.revision !== revision)
+      return privateJson(
+        {
+          error:
+            "Your response changed while this answer was loading. Please try again.",
+        },
+        409,
+      );
     const view = submitResponse(token, "question", b.question, result);
-    return NextResponse.json({ invite: view, mode });
+    return privateJson({ invite: view, mode });
   }
-  return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  return privateJson({ error: "Invalid request." }, 400);
 }

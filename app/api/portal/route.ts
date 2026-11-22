@@ -3,49 +3,35 @@ import { z } from "zod";
 import {
   addEnquiry,
   closeBloodRequest,
-  coordinatorView,
   createBloodRequest,
-  donorBloodView,
-  donorEnquiries,
   expressAvailability,
   getCircle,
   proposeAppointment,
   publishBloodRequest,
-  safeDonorView,
   updateAppointment,
   updateEnquiry,
   withdrawAvailability,
   withWorkspace,
   editBloodRequest,
 } from "@/lib/store";
+import { getSession, privateJson, readBody } from "@/lib/session";
+import { portalView as view } from "@/lib/portal-view";
 import {
-  getSession,
-  privateJson,
-  readBody,
-  type DemoSession,
-} from "@/lib/session";
+  MAX_TITLE_LENGTH,
+  MAX_LOCATION_LENGTH,
+  MAX_INSTRUCTION_LENGTH,
+  MAX_CANCEL_REASON_LENGTH,
+  MAX_ANSWER_LENGTH,
+  MAX_QUESTION_LENGTH,
+} from "@/lib/constants";
 export const runtime = "nodejs";
 const requestFields = z.object({
-  title: z.string().trim().min(1).max(100),
-  location: z.string().trim().min(1).max(120),
+  title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+  location: z.string().trim().min(1).max(MAX_LOCATION_LENGTH),
   bloodGroup: z.enum(["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"]),
   appointmentWindow: z.string().trim().min(1).max(120),
-  instructions: z.string().trim().max(300),
+  instructions: z.string().trim().max(MAX_INSTRUCTION_LENGTH),
 });
-function view(session: DemoSession) {
-  if (session.role === "coordinator")
-    return { coordinatorData: coordinatorView() };
-  const circle = getCircle(session.donorId);
-  return circle
-    ? {
-        donor: {
-          circle: safeDonorView(circle),
-          blood: donorBloodView(circle.id),
-          enquiries: donorEnquiries(circle.id),
-        },
-      }
-    : null;
-}
 export async function GET(req: NextRequest) {
   const session = getSession(req);
   if (!session) return privateJson({ error: "Choose a demo role first." }, 401);
@@ -97,7 +83,10 @@ export async function POST(req: NextRequest) {
       if (body.action === "cancel" || body.action === "complete") {
         const reason =
           typeof body.reason === "string" ? body.reason.trim() : "";
-        if (body.action === "cancel" && (!reason || reason.length > 180))
+        if (
+          body.action === "cancel" &&
+          (!reason || reason.length > MAX_CANCEL_REASON_LENGTH)
+        )
           return fail("Enter a cancellation explanation (1–180 characters).");
         return updateAppointment(
           appointmentId,
@@ -111,7 +100,10 @@ export async function POST(req: NextRequest) {
       if (body.action === "start-follow-up" || body.action === "resolve") {
         const answer =
           typeof body.answer === "string" ? body.answer.trim() : "";
-        if (answer.length > 500 || (body.action === "resolve" && !answer))
+        if (
+          answer.length > MAX_ANSWER_LENGTH ||
+          (body.action === "resolve" && !answer)
+        )
           return fail(
             "Write a donor-visible message before resolving (up to 500 characters).",
           );
@@ -157,7 +149,7 @@ export async function POST(req: NextRequest) {
       if (
         typeof body.question !== "string" ||
         !body.question.trim() ||
-        body.question.length > 600
+        body.question.length > MAX_QUESTION_LENGTH
       )
         return fail("Write a question of 1–600 characters.");
       addEnquiry(donorId, body.question, body.language === "hi" ? "hi" : "en");

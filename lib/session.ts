@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getCircle, withWorkspace } from "./store";
-import { SESSION_TTL_MS, MAX_SESSIONS } from "./constants";
+import { getCircle, releaseWorkspace, withWorkspace } from "./store";
+import { SESSION_TTL_MS, MAX_SESSIONS, MAX_BODY_SIZE } from "./constants";
 
 export type DemoSession = {
   id: string;
@@ -16,23 +16,29 @@ const sessions = (globalThis.sunoSessions ??= new Map<string, DemoSession>());
 
 function pruneExpiredSessions() {
   const now = Date.now();
+  // Fixed TTL + insertion order means expired sessions form a prefix.
   for (const [key, value] of sessions) {
-    if (value.expiresAt < now) sessions.delete(key);
+    if (value.expiresAt > now) break;
+    sessions.delete(key);
+    releaseWorkspace(key);
   }
-  if (sessions.size > MAX_SESSIONS) {
-    // Evict oldest entries if capacity exceeded
-    const toDelete = sessions.size - MAX_SESSIONS;
-    let count = 0;
-    for (const key of sessions.keys()) {
-      if (count++ >= toDelete) break;
-      sessions.delete(key);
-    }
+  // Reserve room before insertion, so the limit is never exceeded.
+  while (sessions.size >= MAX_SESSIONS) {
+    const key = sessions.keys().next().value!;
+    sessions.delete(key);
+    releaseWorkspace(key);
   }
 }
 
 export function getSession(req: NextRequest) {
   const session = sessions.get(req.cookies.get("suno_session")?.value ?? "");
-  return session && session.expiresAt > Date.now() ? session : undefined;
+  if (!session) return undefined;
+  if (session.expiresAt <= Date.now()) {
+    sessions.delete(session.id);
+    releaseWorkspace(session.id);
+    return undefined;
+  }
+  return session;
 }
 export function createSession(role: DemoSession["role"]): DemoSession {
   pruneExpiredSessions();
@@ -50,7 +56,7 @@ export function setSessionCookie(response: NextResponse, session: DemoSession) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 86400,
+    maxAge: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000)),
   });
 }
 export function privateJson(body: unknown, status = 200) {
@@ -63,14 +69,45 @@ export function privateJson(body: unknown, status = 200) {
   });
 }
 export function validOrigin(req: NextRequest) {
+  if (req.headers.get("sec-fetch-site") === "cross-site") return false;
   const origin = req.headers.get("origin");
-  return !origin || origin === new URL(req.url).origin;
+  if (!origin) return true;
+  // Cloud Run terminates HTTPS before forwarding to Node. Host is the actual
+  // request authority; never trust a client-supplied x-forwarded-host.
+  const host = req.headers.get("host");
+  const protocol =
+    req.headers.get("x-forwarded-proto") === "https"
+      ? "https:"
+      : new URL(req.url).protocol;
+  return origin === (host ? `${protocol}//${host}` : new URL(req.url).origin);
 }
 export async function readBody(req: NextRequest) {
   if (!validOrigin(req))
     throw new Error("Cross-origin writes are not allowed.");
-  const text = await req.text();
-  if (text.length > 12000) throw new Error("Request is too large.");
+  const contentType = req.headers.get("content-type")?.split(";")[0].trim();
+  if (contentType !== "application/json") throw new Error("Expected JSON.");
+  const length = req.headers.get("content-length");
+  if (length && Number(length) > MAX_BODY_SIZE)
+    throw new Error("Request is too large.");
+  if (!req.body) throw new Error("Invalid request.");
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_BODY_SIZE) {
+        await reader.cancel();
+        throw new Error("Request is too large.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const text = Buffer.concat(chunks, size).toString("utf8");
   const body: unknown = JSON.parse(text);
   if (!body || typeof body !== "object" || Array.isArray(body))
     throw new Error("Invalid request.");

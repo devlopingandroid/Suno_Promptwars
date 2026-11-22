@@ -11,6 +11,8 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Lang } from "@/lib/translations";
+import { requestJson } from "@/lib/client-api";
+import { useDocumentLanguage } from "@/lib/use-document-language";
 type Result = {
   category: string;
   answer: string | null;
@@ -77,7 +79,8 @@ const T = {
     source: "आधिकारिक स्रोत",
     excerpt: "स्रोत का सटीक अंश",
     starter: "बात आगे बढ़ाने का सहज तरीका",
-    unsupported: "उपलब्ध स्रोतों से मैं इस सवाल का उत्तर सत्यापित नहीं कर सकता।",
+    unsupported:
+      "उपलब्ध स्रोतों से मैं इस सवाल का उत्तर सत्यापित नहीं कर सकता।",
     open: "यह सवाल खुला है। आप किसी भरोसेमंद व्यक्ति या आधिकारिक जानकारी सेवा से बात कर सकते हैं।",
     yourResponse: "आपकी प्रतिक्रिया",
     delete: "मेरी प्रतिक्रिया हटाएँ",
@@ -130,16 +133,28 @@ export default function InvitePage({
     [question, setQuestion] = useState(""),
     [busy, setBusy] = useState(false);
   const t = T[lang];
+  useDocumentLanguage(lang);
   useEffect(() => {
-    fetch(`/api/invite/${token}`, { cache: "no-store" })
-      .then(async (r) => {
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error);
+    const controller = new AbortController();
+    setLoading(true);
+    setView(null);
+    setError("");
+    requestJson<{ invite: View }>(`/api/invite/${token}`, {
+      signal: controller.signal,
+    })
+      .then((d) => {
+        if (controller.signal.aborted) return;
         setView(d.invite);
         setQuestion(d.invite.question || "");
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e: unknown) => {
+        if (!controller.signal.aborted)
+          setError(e instanceof Error ? e.message : "Request failed.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
   }, [token]);
   const [answerMode, setAnswerMode] = useState("");
   async function respond(action: string, kind?: string) {
@@ -147,13 +162,14 @@ export default function InvitePage({
     setError("");
     setNotice("");
     try {
-      const r = await fetch(`/api/invite/${token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, kind, question }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
+      const d = await requestJson<{ invite: View; mode?: string }>(
+        `/api/invite/${token}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, kind, question }),
+        },
+      );
       setView(d.invite);
       if (d.mode) setAnswerMode(d.mode);
       setNotice(
@@ -196,7 +212,12 @@ export default function InvitePage({
           </div>
         </div>
       </header>
-      <main className="family-main">
+      <main
+        id="main-content"
+        className="family-main"
+        tabIndex={-1}
+        aria-busy={busy}
+      >
         <div className="family-container">
           <a className="back-link" href="/">
             ← {t.back}
@@ -236,12 +257,14 @@ export default function InvitePage({
                     <p>{t.notLegal}</p>
                   </div>
                 </div>
-                <div className="choice-grid">
+                <div className="choice-grid" role="group" aria-label={t.choose}>
                   <button
                     className={
                       choice === "understand" ? "choice selected" : "choice"
                     }
                     onClick={() => setChoice("understand")}
+                    aria-pressed={choice === "understand"}
+                    disabled={busy}
                   >
                     <CheckCircle2 size={21} />
                     <span>{t.understand}</span>
@@ -251,6 +274,8 @@ export default function InvitePage({
                       choice === "question" ? "choice selected" : "choice"
                     }
                     onClick={() => setChoice("question")}
+                    aria-pressed={choice === "question"}
+                    disabled={busy}
                   >
                     <CircleHelp size={21} />
                     <span>{t.question}</span>
@@ -260,6 +285,8 @@ export default function InvitePage({
                       choice === "not-ready" ? "choice selected" : "choice"
                     }
                     onClick={() => setChoice("not-ready")}
+                    aria-pressed={choice === "not-ready"}
+                    disabled={busy}
                   >
                     <MessageCircle size={21} />
                     <span>{t.notReady}</span>
@@ -272,13 +299,17 @@ export default function InvitePage({
                     </label>
                     <textarea
                       id="question"
+                      disabled={busy}
+                      aria-describedby="question-count"
                       rows={4}
                       maxLength={600}
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
                       placeholder={t.placeholder}
                     />
-                    <p className="field-meta">{question.length}/600</p>
+                    <p className="field-meta" id="question-count">
+                      {question.length}/600
+                    </p>
                   </div>
                 )}
                 {choice === "not-ready" && (

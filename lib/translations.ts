@@ -1,7 +1,6 @@
 export type Lang = "en" | "hi";
-type Copy = Record<string, string>;
 
-const en: Copy = {
+const en = {
   home: "Overview",
   donor: "Donor portal",
   coordinator: "Coordinator workspace",
@@ -124,6 +123,7 @@ const en: Copy = {
   editableSummary: "Editable summary",
 };
 
+type Copy = { [Key in keyof typeof en]: string };
 const hi: Copy = {
   ...en,
   home: "ओवरव्यू",
@@ -195,7 +195,8 @@ const hi: Copy = {
   questionPlaceholder: "कोऑर्डिनेटर से आप क्या समझना चाहते हैं?",
   sendFollowup: "कोऑर्डिनेटर फॉलो-अप माँगें",
   followupSent: "फॉलो-अप माँगा गया",
-  wishCopy: "अपने शब्दों में लिखें। सेव करने से पहले हर सुझाया शब्द आप देखेंगे।",
+  wishCopy:
+    "अपने शब्दों में लिखें। सेव करने से पहले हर सुझाया शब्द आप देखेंगे।",
   saveWish: "इच्छा सेव करें",
   assist: "सौम्य शब्द सुझाएँ",
   saved: "सेव किया गया",

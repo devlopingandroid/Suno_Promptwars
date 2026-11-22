@@ -8,6 +8,11 @@ import {
   withWorkspace,
 } from "@/lib/store";
 import { donorSession, privateJson, readBody } from "@/lib/session";
+import {
+  MAX_WISH_LENGTH,
+  MAX_SUMMARY_LENGTH,
+  MAX_NAME_LENGTH,
+} from "@/lib/constants";
 export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const session = donorSession(req);
@@ -33,19 +38,19 @@ export async function POST(req: NextRequest) {
       body.action === "wish" &&
       typeof body.wish === "string" &&
       body.wish.trim() &&
-      body.wish.length <= 800
+      body.wish.length <= MAX_WISH_LENGTH
     )
       saveWish(circle.id, body.wish);
     else if (
       body.action === "summary" &&
       typeof body.summary === "string" &&
-      body.summary.length <= 4000
+      body.summary.length <= MAX_SUMMARY_LENGTH
     )
       circle.summary = body.summary;
     else if (
       body.action === "invite" &&
       typeof body.name === "string" &&
-      body.name.length <= 40 &&
+      body.name.length <= MAX_NAME_LENGTH &&
       addInvite(circle.id, body.name)
     ) {
       /* created */

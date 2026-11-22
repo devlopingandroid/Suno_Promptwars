@@ -8,7 +8,6 @@ import {
   deleteCircle,
   deleteOwnResponse,
   donorBloodView,
-  ensureDemoData,
   expressAvailability,
   findInvite,
   getCircle,

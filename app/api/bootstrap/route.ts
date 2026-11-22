@@ -1,14 +1,9 @@
 import { NextRequest } from "next/server";
 import {
-  coordinatorView,
   createCircle,
-  deleteCircle,
-  donorBloodView,
-  donorEnquiries,
+  releaseWorkspace,
   getCircle,
-  getHospital,
   resetDemoData,
-  safeDonorView,
   withWorkspace,
 } from "@/lib/store";
 import {
@@ -17,27 +12,9 @@ import {
   privateJson,
   readBody,
   setSessionCookie,
-  type DemoSession,
 } from "@/lib/session";
+import { bootstrapView as view } from "@/lib/portal-view";
 export const runtime = "nodejs";
-
-function view(session: DemoSession) {
-  const circle = getCircle(session.donorId);
-  return {
-    mode: "demo",
-    role: session.role,
-    hospital: getHospital(),
-    donor:
-      session.role === "donor" && circle
-        ? {
-            circle: safeDonorView(circle),
-            blood: donorBloodView(circle.id),
-            enquiries: donorEnquiries(circle.id),
-          }
-        : null,
-    coordinatorData: session.role === "coordinator" ? coordinatorView() : null,
-  };
-}
 export async function GET(req: NextRequest) {
   const session = getSession(req);
   return session
@@ -57,7 +34,7 @@ export async function POST(req: NextRequest) {
   session.role = body.role;
   return withWorkspace(session.id, () => {
     if (body.reset === true) {
-      if (session.donorId) deleteCircle(session.donorId);
+      releaseWorkspace(session.id);
       session.donorId = undefined;
       resetDemoData();
     }

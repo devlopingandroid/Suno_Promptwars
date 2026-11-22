@@ -1,24 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getCircle } from "@/lib/store";
-import { donorSession, readBody } from "@/lib/session";
+import { NextRequest } from "next/server";
+import { donorSession, readBody, privateJson } from "@/lib/session";
+import { MAX_WISH_LENGTH } from "@/lib/constants";
 export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   if (!donorSession(req))
-    return NextResponse.json(
-      { error: "Start a conversation first." },
-      { status: 401 },
-    );
-  let wish = "";
+    return privateJson({ error: "Start a conversation first." }, 401);
+  let wish: unknown;
   try {
-    wish = (await readBody(req)).wish as string;
-  } catch (err) {
-    console.error("[Suno Assist] Body parse failed:", err);
+    wish = (await readBody(req)).wish;
+  } catch {
+    return privateJson({ error: "Invalid request." }, 400);
   }
-  if (typeof wish !== "string" || wish.length > 800)
-    return NextResponse.json(
-      { error: "Write up to 800 characters." },
-      { status: 400 },
-    );
+  if (typeof wish !== "string" || !wish.trim() || wish.length > MAX_WISH_LENGTH)
+    return privateJson({ error: "Write 1–800 characters." }, 400);
   // Demo aid keeps the original statement verbatim and only adds an optional, gentle frame.
   const original = wish.trim().replace(/\s+/g, " ");
   const hindi = /[\u0900-\u097F]/.test(original);
@@ -31,8 +25,8 @@ export async function POST(req: NextRequest) {
   const framed = original.startsWith(opening)
     ? original
     : opening + original + closing;
-  const suggestion = framed.length <= 800 ? framed : original;
-  return NextResponse.json({
+  const suggestion = framed.length <= MAX_WISH_LENGTH ? framed : original;
+  return privateJson({
     suggestion,
     mode: "demo",
     note: "Your original words are preserved inside an optional gentle opening and closing. Review and edit before saving.",

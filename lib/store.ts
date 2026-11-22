@@ -1,6 +1,19 @@
 import { randomBytes } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { answerConcern, type ConcernResult } from "./sources";
+import {
+  DEMO_TTL_MS,
+  MAX_INVITES,
+  MAX_NAME_LENGTH,
+  MAX_WISH_LENGTH,
+  MAX_QUESTION_LENGTH,
+  MAX_TITLE_LENGTH,
+  MAX_LOCATION_LENGTH,
+  MAX_INSTRUCTION_LENGTH,
+  MAX_CANCEL_REASON_LENGTH,
+  MAX_ANSWER_LENGTH,
+} from "./constants";
+export { DEMO_TTL_MS } from "./constants";
 
 export type InviteStatus =
   | "invited"
@@ -10,6 +23,7 @@ export type InviteStatus =
   | "conversation completed"
   | "declined to discuss";
 export type Invite = {
+  revision?: number;
   token: string;
   name: string;
   expiresAt: number;
@@ -29,9 +43,15 @@ export type Circle = {
 };
 export type RequestStatus = "draft" | "published" | "closed";
 export type VolunteerStatus =
-  "available" | "withdrawn" | "appointment proposed";
+  | "available"
+  | "withdrawn"
+  | "appointment proposed";
 export type AppointmentStatus =
-  "proposed" | "confirmed" | "completed" | "declined" | "cancelled";
+  | "proposed"
+  | "confirmed"
+  | "completed"
+  | "declined"
+  | "cancelled";
 export type Activity = {
   id: string;
   actor: string;
@@ -116,10 +136,27 @@ type AppData = {
 declare global {
   var sunoDemoStore: Map<string, Circle> | undefined;
   var sunoAppData: AppData | undefined;
+  var sunoInviteIndex:
+    | Map<string, { circle: Circle; invite: Invite }>
+    | undefined;
+  var sunoWorkspaceCircles: Map<string, Set<string>> | undefined;
 }
 const circles =
   globalThis.sunoDemoStore ??
   (globalThis.sunoDemoStore = new Map<string, Circle>());
+// Rebuilt once when this module loads, then maintained with each circle change.
+// Tokens are random bearer capabilities; never serialize this server-only index.
+const inviteIndex = (globalThis.sunoInviteIndex ??= new Map());
+const workspaceCircles = (globalThis.sunoWorkspaceCircles ??= new Map());
+for (const circle of circles.values()) {
+  for (const invite of circle.invites)
+    inviteIndex.set(invite.token, { circle, invite });
+  if (circle.workspaceId) {
+    const owned = workspaceCircles.get(circle.workspaceId) ?? new Set<string>();
+    owned.add(circle.id);
+    workspaceCircles.set(circle.workspaceId, owned);
+  }
+}
 const defaultApp: AppData =
   globalThis.sunoAppData ??
   (globalThis.sunoAppData = {
@@ -145,6 +182,16 @@ declare global {
   var sunoWorkspaces: Map<string, AppData> | undefined;
 }
 const workspaces = (globalThis.sunoWorkspaces ??= new Map());
+export function releaseWorkspace(workspaceId: string) {
+  for (const circleId of workspaceCircles.get(workspaceId) ?? []) {
+    const circle = circles.get(circleId);
+    if (circle)
+      for (const invite of circle.invites) inviteIndex.delete(invite.token);
+    circles.delete(circleId);
+  }
+  workspaceCircles.delete(workspaceId);
+  workspaces.delete(workspaceId);
+}
 export function withWorkspace<T>(workspaceId: string, fn: () => T): T {
   return scope.run(workspaceId, fn);
 }
@@ -167,7 +214,6 @@ const app = new Proxy(defaultApp, {
   },
 });
 
-export const DEMO_TTL_MS = 24 * 60 * 60 * 1000;
 export const DEMO_COORDINATOR_ID = "demo-coordinator";
 const id = () => randomBytes(16).toString("base64url");
 const now = () => Date.now();
@@ -238,6 +284,11 @@ export function createCircle(seeded = false) {
     createdAt: now(),
   };
   circles.set(circle.id, circle);
+  if (circle.workspaceId) {
+    const owned = workspaceCircles.get(circle.workspaceId) ?? new Set<string>();
+    owned.add(circle.id);
+    workspaceCircles.set(circle.workspaceId, owned);
+  }
   if (seeded) {
     addInvite(circle.id, "Mother");
     addInvite(circle.id, "Brother");
@@ -247,27 +298,31 @@ export function createCircle(seeded = false) {
 export function saveWish(circleId: string, wish: string) {
   const circle = getCircle(circleId);
   if (!circle) return null;
-  circle.wish = wish.slice(0, 800);
+  circle.wish = wish.slice(0, MAX_WISH_LENGTH);
   return circle;
 }
 export function addInvite(circleId: string, name: string) {
   const circle = getCircle(circleId);
-  if (!circle || circle.invites.length >= 3 || !name.trim()) return null;
+  if (!circle || circle.invites.length >= MAX_INVITES || !name.trim())
+    return null;
   const invite: Invite = {
     token: randomBytes(24).toString("base64url"),
-    name: name.trim().slice(0, 40),
+    name: name.trim().slice(0, MAX_NAME_LENGTH),
     expiresAt: now() + DEMO_TTL_MS,
     status: "invited",
   };
   circle.invites.push(invite);
+  inviteIndex.set(invite.token, { circle, invite });
   return invite;
 }
 export function findInvite(tokenValue: string, at = now()) {
-  for (const circle of circles.values()) {
-    const invite = circle.invites.find((item) => item.token === tokenValue);
-    if (invite) return invite.expiresAt > at ? { circle, invite } : null;
+  const found = inviteIndex.get(tokenValue);
+  if (!found) return null;
+  if (found.invite.expiresAt <= at) {
+    inviteIndex.delete(tokenValue);
+    return null;
   }
-  return null;
+  return found;
 }
 export function getInviteView(tokenValue: string) {
   const found = findInvite(tokenValue);
@@ -294,9 +349,10 @@ export function submitResponse(
   const invite = found.invite;
   if (
     kind === "question" &&
-    (!question?.trim() || question.length > 600 || !result)
+    (!question?.trim() || question.length > MAX_QUESTION_LENGTH || !result)
   )
     return null;
+  invite.revision = (invite.revision ?? 0) + 1;
   invite.response = kind;
   invite.question = kind === "question" ? question!.trim() : undefined;
   invite.result = kind === "question" ? result : undefined;
@@ -312,6 +368,7 @@ export function deleteOwnResponse(tokenValue: string) {
   const found = findInvite(tokenValue);
   if (!found) return false;
   const invite = found.invite;
+  invite.revision = (invite.revision ?? 0) + 1;
   invite.response = undefined;
   invite.question = undefined;
   invite.result = undefined;
@@ -327,6 +384,7 @@ export function markDiscussed(tokenValue: string) {
   )
     return null;
   found.invite.status = "conversation completed";
+  found.invite.revision = (found.invite.revision ?? 0) + 1;
   return getInviteView(tokenValue);
 }
 export function deleteCircle(circleId: string) {
@@ -334,6 +392,7 @@ export function deleteCircle(circleId: string) {
   if (!circle) return false;
   circle.wish = "";
   circle.summary = "";
+  for (const invite of circle.invites) inviteIndex.delete(invite.token);
   circle.invites = [];
   return true;
 }
@@ -357,7 +416,11 @@ export function safeFamilyView(tokenValue: string) {
   return getInviteView(tokenValue);
 }
 export function answerForInvite(tokenValue: string, question: string) {
-  if (!findInvite(tokenValue) || question.length > 600 || !question.trim())
+  if (
+    !findInvite(tokenValue) ||
+    question.length > MAX_QUESTION_LENGTH ||
+    !question.trim()
+  )
     return null;
   return answerConcern(question);
 }
@@ -389,28 +452,31 @@ export function publicBloodRequests() {
 }
 export function donorBloodView(donorId: string) {
   ensureDemoData();
-  const published = publicBloodRequests();
-  const responses = [...app.requests.values()].flatMap((request) =>
-    request.responses
-      .filter((item) => item.donorId === donorId)
-      .map((item) => ({
-        ...item,
-        request:
-          published.find((entry) => entry.id === request.id) ??
-          publicRequest(request),
-      })),
-  );
-  const appointments = [...app.requests.values()].flatMap((request) =>
-    request.appointments
-      .filter((item) => item.donorId === donorId)
-      .map((item) => ({
-        ...item,
-        request:
-          published.find((entry) => entry.id === request.id) ??
-          publicRequest(request),
-      })),
-  );
-  return { requests: published, responses, appointments };
+  type PublicRequest = ReturnType<typeof publicRequest>;
+  const requests: PublicRequest[] = [];
+  const responses: Array<VolunteerResponse & { request: PublicRequest }> = [];
+  const appointments: Array<Appointment & { request: PublicRequest }> = [];
+  for (const request of app.requests.values()) {
+    const ownResponses = request.responses.filter(
+      (item) => item.donorId === donorId,
+    );
+    const ownAppointments = request.appointments.filter(
+      (item) => item.donorId === donorId,
+    );
+    if (
+      request.status !== "published" &&
+      !ownResponses.length &&
+      !ownAppointments.length
+    )
+      continue;
+    const visible = publicRequest(request);
+    if (request.status === "published") requests.push(visible);
+    for (const item of ownResponses)
+      responses.push({ ...item, request: visible });
+    for (const item of ownAppointments)
+      appointments.push({ ...item, request: visible });
+  }
+  return { requests, responses, appointments };
 }
 export function coordinatorView() {
   ensureDemoData();
@@ -444,13 +510,13 @@ export function createBloodRequest(input: {
   ensureDemoData();
   const request: BloodRequest = {
     id: id(),
-    title: input.title.slice(0, 100),
+    title: input.title.slice(0, MAX_TITLE_LENGTH),
     hospitalId: app.hospital.id,
     hospitalName: app.hospital.name,
-    location: input.location.slice(0, 120),
+    location: input.location.slice(0, MAX_LOCATION_LENGTH),
     bloodGroup: input.bloodGroup.slice(0, 12),
     appointmentWindow: input.appointmentWindow.slice(0, 120),
-    instructions: input.instructions.slice(0, 300),
+    instructions: input.instructions.slice(0, MAX_INSTRUCTION_LENGTH),
     status: "draft",
     createdAt: now(),
     updatedAt: now(),
@@ -615,7 +681,7 @@ export function updateAppointment(
               appointment.status === "confirmed";
     if (!allowed) return null;
     appointment.status = next;
-    appointment.reason = reason?.slice(0, 180);
+    appointment.reason = reason?.slice(0, MAX_CANCEL_REASON_LENGTH);
     appointment.updatedAt = now();
     const response = request.responses.find(
       (item) => item.id === appointment.responseId,
@@ -640,8 +706,16 @@ export function addEnquiry(
   language: "en" | "hi" = "en",
 ) {
   ensureDemoData();
-  const clean = question.trim().slice(0, 600);
+  const clean = question.trim().slice(0, MAX_QUESTION_LENGTH);
   if (!clean) return null;
+  // Repeated clicks on follow-up keep one open coordination record.
+  const existing = [...app.enquiries.values()].find(
+    (item) =>
+      item.donorId === donorId &&
+      item.question === clean &&
+      item.status !== "resolved",
+  );
+  if (existing) return existing;
   const enquiry: Enquiry = {
     id: id(),
     donorId,
@@ -673,7 +747,7 @@ export function updateEnquiry(
   )
     return null;
   enquiry.status = next;
-  enquiry.answer = answer?.slice(0, 500);
+  enquiry.answer = answer?.slice(0, MAX_ANSWER_LENGTH);
   enquiry.updatedAt = now();
   enquiry.activity.push(
     activity(
