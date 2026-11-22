@@ -75,6 +75,18 @@ The automated suite covers supported Hindi source selection, unsupported questio
 
 For a demo deployment, push this repository to GitHub and create a single-instance Node service on Render, Railway, or a similar host. Use build command `npm install && npm run build` and start command `npm run start`. The ephemeral store requires one running Node process for the connected donor/coordinator demo.
 
+### Google Cloud Run
+
+The included `Dockerfile` builds a standalone Next.js container. Deploy from this directory with the Google Cloud CLI:
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+gcloud run deploy suno --source . --region asia-south1 --allow-unauthenticated --max 1
+```
+
+Cloud Build and Cloud Run APIs must be enabled, and the Google Cloud project needs billing enabled. The `--max 1` setting keeps the in-memory demo data on one instance so donor and coordinator sessions can see the same changes. The data is still temporary and resets when the instance restarts. For GitHub continuous deployment, connect this repository in Cloud Run and use the same service name, region, public access, and maximum instance setting. Keep `GEMINI_API_KEY` in Cloud Run's server-side environment or Secret Manager; never commit it to the repository.
+
 For persistent invitations and records, replace the in-memory store with a database, add durable server-side authentication and authorization, invitation delivery with consent, expiry cleanup, rate limits, audit logging that excludes private text, and a privacy review. Do not use the demo store as a real donor service.
 
 ## Remaining limitations
