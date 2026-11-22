@@ -1,61 +1,2618 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowRight, BookOpen, CalendarDays, Check, CheckCircle2, ChevronRight, CircleHelp, ClipboardList, Clock3, Copy, ExternalLink, FileText, HeartHandshake, Hospital, Info, LayoutDashboard, LockKeyhole, Menu, MessageCircle, PackageCheck, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, Stethoscope, Trash2, UserRound, Users, X } from 'lucide-react';
-import type { Activity as ActivityRecord, AppointmentStatus, BloodRequest, Circle, Enquiry, InviteStatus, Hospital as HospitalRecord, VolunteerResponse } from '@/lib/store';
-import { tx, type Lang } from '@/lib/translations';
+import { createContext, useContext, useEffect, useState } from "react";
+import {
+  Activity,
+  ArrowRight,
+  BookOpen,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  CircleHelp,
+  ClipboardList,
+  Clock3,
+  Copy,
+  ExternalLink,
+  FileText,
+  HeartHandshake,
+  Hospital,
+  Info,
+  LayoutDashboard,
+  LockKeyhole,
+  Menu,
+  MessageCircle,
+  PackageCheck,
+  Plus,
+  RefreshCw,
+  Search,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Stethoscope,
+  Trash2,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
+import type {
+  Activity as ActivityRecord,
+  AppointmentStatus,
+  BloodRequest,
+  Circle,
+  Enquiry,
+  InviteStatus,
+  Hospital as HospitalRecord,
+  VolunteerResponse,
+} from "@/lib/store";
+import { tx, type Lang } from "@/lib/translations";
 
-const NOTTO = 'https://notto.mohfw.gov.in/';
-const PLEDGE = 'https://notto.abdm.gov.in/';
-type Role = 'donor' | 'coordinator';
-type Section = 'overview' | 'blood' | 'appointments' | 'organ' | 'wish' | 'family' | 'enquiries' | 'hospital';
-type PublicRequest = Pick<BloodRequest, 'id' | 'title' | 'hospitalName' | 'location' | 'bloodGroup' | 'appointmentWindow' | 'instructions' | 'status' | 'createdAt' | 'updatedAt' | 'coordinatorName' | 'coordinatorRole'>;
-type DonorBlood = { requests: PublicRequest[]; responses: Array<VolunteerResponse & { request: PublicRequest }>; appointments: Array<{ id: string; requestId: string; responseId: string; donorId: string; donorName: string; window: string; status: AppointmentStatus; reason?: string; request: PublicRequest | null }> };
+const NOTTO = "https://notto.mohfw.gov.in/";
+const PLEDGE = "https://notto.abdm.gov.in/";
+type Role = "donor" | "coordinator";
+type Section =
+  | "overview"
+  | "blood"
+  | "appointments"
+  | "organ"
+  | "wish"
+  | "family"
+  | "enquiries"
+  | "hospital";
+type PublicRequest = Pick<
+  BloodRequest,
+  | "id"
+  | "title"
+  | "hospitalName"
+  | "location"
+  | "bloodGroup"
+  | "appointmentWindow"
+  | "instructions"
+  | "status"
+  | "createdAt"
+  | "updatedAt"
+  | "coordinatorName"
+  | "coordinatorRole"
+>;
+type DonorBlood = {
+  requests: PublicRequest[];
+  responses: Array<VolunteerResponse & { request: PublicRequest }>;
+  appointments: Array<{
+    id: string;
+    requestId: string;
+    responseId: string;
+    donorId: string;
+    donorName: string;
+    window: string;
+    status: AppointmentStatus;
+    reason?: string;
+    request: PublicRequest | null;
+  }>;
+};
 type DonorData = { circle: Circle; blood: DonorBlood; enquiries: Enquiry[] };
-type CoordinatorData = { hospital: HospitalRecord; requests: BloodRequest[]; enquiries: Enquiry[]; recentActivity: ActivityRecord[] };
-type Session = { role: Role | null; hospital?: HospitalRecord; donor?: DonorData | null; coordinatorData?: CoordinatorData | null };
+type CoordinatorData = {
+  hospital: HospitalRecord;
+  requests: BloodRequest[];
+  enquiries: Enquiry[];
+  recentActivity: ActivityRecord[];
+};
+type Session = {
+  role: Role | null;
+  hospital?: HospitalRecord;
+  donor?: DonorData | null;
+  coordinatorData?: CoordinatorData | null;
+};
 
-async function requestJson(url: string, options?: RequestInit) { const response = await fetch(url, { cache: 'no-store', ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } }); const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Request failed.'); return body; }
-function timeLabel(timestamp: number) { return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(timestamp); }
-function statusTone(value: string) { return value.replaceAll(' ', '-').toLowerCase(); }
-function Status({ value }: { value: string }) { return <span className={`status-chip ${statusTone(value)}`}>{value}</span>; }
-function Header({ lang, setLang, role, onRoleChange }: { lang: Lang; setLang: (lang: Lang) => void; role: Role | null; onRoleChange: (role: Role) => void }) { const t = tx[lang]; return <header className="topbar"><div className="topbar-inner"><button className="brand" onClick={() => onRoleChange(role ?? 'donor')} aria-label="Suno home"><span className="brand-mark"><HeartHandshake size={19} /></span><span>Suno</span></button><div className="topbar-context">{role === 'coordinator' ? <><Hospital size={16} /> Coordinator workspace</> : role === 'donor' ? <><UserRound size={16} /> Donor portal</> : <span>Donation coordination platform</span>}</div><div className="topbar-actions"><span className="demo-pill"><span />{t.demo}</span><button className="language-button" onClick={() => setLang(lang === 'en' ? 'hi' : 'en')} aria-label={lang === 'en' ? 'Switch to Hindi' : 'Switch to English'}>{lang === 'en' ? t.switchHindi : t.switchEnglish}</button>{role && <button className="topbar-role" onClick={() => onRoleChange(role === 'donor' ? 'coordinator' : 'donor')}>{role === 'donor' ? 'Coordinator view' : 'Donor view'} <ChevronRight size={14} /></button>}</div></div></header>; }
-function Landing({ lang, setLang, start }: { lang: Lang; setLang: (lang: Lang) => void; start: (role: Role) => void }) { const t = tx[lang]; return <div className="landing"><Header lang={lang} setLang={setLang} role={null} onRoleChange={start} /><main><section className="landing-hero"><div className="landing-hero-copy"><p className="eyebrow"><span className="eyebrow-line" />HOSPITAL DONATION COORDINATION</p><h1>{t.welcome}</h1><p className="landing-lead">{t.welcomeCopy}</p><div className="landing-actions"><button className="button primary" onClick={() => start('donor')}><UserRound size={17} /> {t.tryDonor}<ArrowRight size={16} /></button><button className="button outline" onClick={() => start('coordinator')}><Hospital size={17} /> {t.tryCoordinator}</button></div><div className="landing-trust"><ShieldCheck size={18} /><span>{t.independent}</span></div></div><div className="landing-visual" aria-label="Donation coordination workflow illustration"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="visual-center"><HeartHandshake size={42} /><span>One accountable workspace</span></div><div className="visual-node node-one"><DropletIcon /><span>Blood requests</span></div><div className="visual-node node-two"><Users size={19} /><span>Family conversations</span></div><div className="visual-node node-three"><Stethoscope size={19} /><span>Hospital follow-up</span></div></div></section><section className="landing-strip"><div><strong>Separate flows. Shared visibility.</strong><span>Blood volunteering stays operational; organ and tissue conversations stay personal and source-grounded.</span></div><a href={NOTTO} target="_blank" rel="noopener noreferrer">Read official NOTTO information <ExternalLink size={14} /></a></section><section className="landing-features"><div className="section-heading"><p className="eyebrow">BUILT FOR CLARITY</p><h2>From willingness to the next responsible step.</h2></div><div className="feature-grid"><Feature icon={<DropletIcon />} title="Coordinate blood volunteers" copy="Publish a request, review availability, and propose appointments without making medical claims." /><Feature icon={<BookOpen />} title="Support informed organ conversations" copy="Record a wish, invite family, and show approved source excerpts beside every supported answer." /><Feature icon={<Activity />} title="Give coordinators a traceable view" copy="Keep requests, enquiries, follow-ups, and activity history in one professional workspace." /></div></section></main><footer className="landing-footer"><span><HeartHandshake size={16} /> Suno</span><span>Independent demo · Synthetic records · No official pledge is created here</span><a href={PLEDGE} target="_blank" rel="noopener noreferrer">Official pledge route <ExternalLink size={13} /></a></footer></div>; }
-function Feature({ icon, title, copy }: { icon: React.ReactNode; title: string; copy: string }) { return <article className="feature-card"><span className="feature-icon">{icon}</span><h3>{title}</h3><p>{copy}</p></article>; }
-function DropletIcon() { return <span className="droplet-icon" aria-hidden="true">●</span>; }
+async function requestJson(url: string, options?: RequestInit) {
+  const response = await fetch(url, {
+    cache: "no-store",
+    ...options,
+    headers: { "Content-Type": "application/json", ...options?.headers },
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || "Request failed.");
+  return body;
+}
+function timeLabel(timestamp: number) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(timestamp);
+}
+function statusTone(value: string) {
+  return value.replaceAll(" ", "-").toLowerCase();
+}
+const LanguageContext = createContext<Lang>("en");
+function Status({ value }: { value: string }) {
+  const language = useContext(LanguageContext);
+  const hindi: Record<string, string> = {
+    draft: "ड्राफ्ट",
+    published: "प्रकाशित",
+    closed: "बंद",
+    available: "उपलब्ध",
+    withdrawn: "वापस लिया",
+    proposed: "प्रस्तावित",
+    confirmed: "पुष्टि हुई",
+    completed: "उपस्थिति दर्ज",
+    declined: "मना किया",
+    cancelled: "रद्द",
+    invited: "आमंत्रित",
+    viewed: "देखा",
+    open: "खुला",
+    resolved: "हल हुआ",
+    "in progress": "जारी",
+    "appointment proposed": "अपॉइंटमेंट प्रस्तावित",
+    "question open": "सवाल खुला",
+    "conversation completed": "बातचीत हुई",
+    "wish understood": "इच्छा समझी",
+    "declined to discuss": "अभी तैयार नहीं",
+  };
+  return (
+    <span className={`status-chip ${statusTone(value)}`}>
+      {language === "hi" ? (hindi[value] ?? value) : value}
+    </span>
+  );
+}
+function Header({
+  lang,
+  setLang,
+  role,
+  onRoleChange,
+}: {
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+  role: Role | null;
+  onRoleChange: (role: Role) => void;
+}) {
+  const t = tx[lang];
+  return (
+    <header className="topbar">
+      <div className="topbar-inner">
+        <button
+          className="brand"
+          onClick={() => onRoleChange(role ?? "donor")}
+          aria-label="Suno home"
+        >
+          <span className="brand-mark">
+            <HeartHandshake size={19} />
+          </span>
+          <span>Suno</span>
+        </button>
+        <div className="topbar-context">
+          {role === "coordinator" ? (
+            <>
+              <Hospital size={16} /> Coordinator workspace
+            </>
+          ) : role === "donor" ? (
+            <>
+              <UserRound size={16} /> Donor portal
+            </>
+          ) : (
+            <span>Donation coordination platform</span>
+          )}
+        </div>
+        <div className="topbar-actions">
+          <span className="demo-pill">
+            <span />
+            {t.demo}
+          </span>
+          <button
+            className="language-button"
+            onClick={() => setLang(lang === "en" ? "hi" : "en")}
+            aria-label={lang === "en" ? "Switch to Hindi" : "Switch to English"}
+          >
+            {lang === "en" ? t.switchHindi : t.switchEnglish}
+          </button>
+          {role && (
+            <button
+              className="topbar-role"
+              onClick={() =>
+                onRoleChange(role === "donor" ? "coordinator" : "donor")
+              }
+            >
+              {role === "donor" ? t.coordinatorViewBtn : t.donorViewBtn}{" "}
+              <ChevronRight size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+function Landing({
+  lang,
+  setLang,
+  start,
+}: {
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+  start: (role: Role) => void;
+}) {
+  const t = tx[lang];
+  return (
+    <div className="landing">
+      <Header lang={lang} setLang={setLang} role={null} onRoleChange={start} />
+      <main id="main-content">
+        <section className="landing-hero">
+          <div className="landing-hero-copy">
+            <p className="eyebrow">
+              <span className="eyebrow-line" />
+              HOSPITAL DONATION COORDINATION
+            </p>
+            <h1>{t.welcome}</h1>
+            <p className="landing-lead">{t.welcomeCopy}</p>
+            <div className="landing-actions">
+              <button className="button primary" onClick={() => start("donor")}>
+                <UserRound size={17} /> {t.tryDonor}
+                <ArrowRight size={16} />
+              </button>
+              <button
+                className="button outline"
+                onClick={() => start("coordinator")}
+              >
+                <Hospital size={17} /> {t.tryCoordinator}
+              </button>
+            </div>
+            <div className="landing-trust">
+              <ShieldCheck size={18} />
+              <span>{t.independent}</span>
+            </div>
+          </div>
+          <div
+            className="landing-visual"
+            aria-label="Donation coordination workflow illustration"
+          >
+            <div className="orbit orbit-one" />
+            <div className="orbit orbit-two" />
+            <div className="visual-center">
+              <HeartHandshake size={42} />
+              <span>One accountable workspace</span>
+            </div>
+            <div className="visual-node node-one">
+              <DropletIcon />
+              <span>Blood requests</span>
+            </div>
+            <div className="visual-node node-two">
+              <Users size={19} />
+              <span>Family conversations</span>
+            </div>
+            <div className="visual-node node-three">
+              <Stethoscope size={19} />
+              <span>Hospital follow-up</span>
+            </div>
+          </div>
+        </section>
+        <section className="landing-strip">
+          <div>
+            <strong>Separate flows. Shared visibility.</strong>
+            <span>
+              Blood volunteering stays operational; organ and tissue
+              conversations stay personal and source-grounded.
+            </span>
+          </div>
+          <a href={NOTTO} target="_blank" rel="noopener noreferrer">
+            Read official NOTTO information <ExternalLink size={14} />
+          </a>
+        </section>
+        <section className="landing-features">
+          <div className="section-heading">
+            <p className="eyebrow">BUILT FOR CLARITY</p>
+            <h2>From willingness to the next responsible step.</h2>
+          </div>
+          <div className="feature-grid">
+            <Feature
+              icon={<DropletIcon />}
+              title="Coordinate blood volunteers"
+              copy="Publish a request, review availability, and propose appointments without making medical claims."
+            />
+            <Feature
+              icon={<BookOpen />}
+              title="Support informed organ conversations"
+              copy="Record a wish, invite family, and show approved source excerpts beside every supported answer."
+            />
+            <Feature
+              icon={<Activity />}
+              title="Give coordinators a traceable view"
+              copy="Keep requests, enquiries, follow-ups, and activity history in one professional workspace."
+            />
+          </div>
+        </section>
+      </main>
+      <footer className="landing-footer">
+        <span>
+          <HeartHandshake size={16} /> Suno
+        </span>
+        <span>
+          Independent demo · Synthetic records · No official pledge is created
+          here
+        </span>
+        <a href={PLEDGE} target="_blank" rel="noopener noreferrer">
+          Official pledge route <ExternalLink size={13} />
+        </a>
+      </footer>
+    </div>
+  );
+}
+function Feature({
+  icon,
+  title,
+  copy,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  copy: string;
+}) {
+  return (
+    <article className="feature-card">
+      <span className="feature-icon">{icon}</span>
+      <h3>{title}</h3>
+      <p>{copy}</p>
+    </article>
+  );
+}
+function DropletIcon() {
+  return (
+    <span className="droplet-icon" aria-hidden="true">
+      ●
+    </span>
+  );
+}
 
-function Sidebar({ role, section, setSection, lang }: { role: Role; section: Section; setSection: (section: Section) => void; lang: Lang }) { const t = tx[lang]; const items: Array<{ id: Section; label: string; icon: React.ReactNode; role?: Role }> = role === 'donor' ? [{ id: 'overview', label: t.home, icon: <LayoutDashboard size={17} /> }, { id: 'blood', label: t.blood, icon: <DropletIcon /> }, { id: 'appointments', label: t.appointments, icon: <CalendarDays size={17} /> }, { id: 'organ', label: t.organ, icon: <BookOpen size={17} /> }, { id: 'wish', label: t.wish, icon: <FileText size={17} /> }, { id: 'family', label: t.family, icon: <Users size={17} /> }, { id: 'enquiries', label: t.enquiries, icon: <MessageCircle size={17} /> }] : [{ id: 'overview', label: t.home, icon: <LayoutDashboard size={17} /> }, { id: 'blood', label: t.blood, icon: <DropletIcon /> }, { id: 'appointments', label: t.appointments, icon: <CalendarDays size={17} /> }, { id: 'enquiries', label: t.enquiries, icon: <MessageCircle size={17} /> }, { id: 'hospital', label: t.hospital, icon: <Hospital size={17} /> }]; return <aside className="sidebar"><div className="sidebar-label">{role === 'donor' ? 'YOUR SPACE' : 'HOSPITAL OPERATIONS'}</div><nav aria-label="Application navigation">{items.map(item => <button key={item.id} className={section === item.id ? 'active' : ''} onClick={() => setSection(item.id)}>{item.icon}<span>{item.label}</span></button>)}</nav><div className="sidebar-bottom"><div className="privacy-note"><LockKeyhole size={15} /><span>Private demo data<br />stored in this server process</span></div><a href={NOTTO} target="_blank" rel="noopener noreferrer">NOTTO source <ExternalLink size={12} /></a></div></aside>; }
-function AppShell({ lang, setLang, role, onRoleChange, section, setSection, children }: { lang: Lang; setLang: (lang: Lang) => void; role: Role; onRoleChange: (role: Role) => void; section: Section; setSection: (section: Section) => void; children: React.ReactNode }) { return <div className="app-shell"><Header lang={lang} setLang={setLang} role={role} onRoleChange={onRoleChange} /><div className="app-body"><Sidebar role={role} section={section} setSection={setSection} lang={lang} /><main className="app-main">{children}</main></div></div>; }
-function PageHeader({ eyebrow, title, copy, lang, right }: { eyebrow: string; title: string; copy: string; lang: Lang; right?: React.ReactNode }) { return <div className="page-header"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{copy}</p></div>{right}</div>; }
-function Metric({ label, value, note, icon, tone = 'green' }: { label: string; value: string | number; note: string; icon: React.ReactNode; tone?: string }) { return <article className="metric-card"><span className={`metric-icon ${tone}`}>{icon}</span><div><p>{label}</p><strong>{value}</strong><small>{note}</small></div></article>; }
-function Panel({ title, copy, icon, action, children, className = '' }: { title: string; copy?: string; icon?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode; className?: string }) { return <section className={`app-panel ${className}`}><div className="panel-heading"><div className="panel-heading-title">{icon && <span className="panel-icon">{icon}</span>}<div><h2>{title}</h2>{copy && <p>{copy}</p>}</div></div>{action}</div>{children}</section>; }
-function Notice({ tone = 'success', children, onClose }: { tone?: 'success' | 'error' | 'info'; children: React.ReactNode; onClose?: () => void }) { return <div className={`notice ${tone}`} role={tone === 'error' ? 'alert' : 'status'}><Info size={16} /> <span>{children}</span>{onClose && <button onClick={onClose} aria-label="Close"><X size={15} /></button>}</div>; }
+function Sidebar({
+  role,
+  section,
+  setSection,
+  lang,
+}: {
+  role: Role;
+  section: Section;
+  setSection: (section: Section) => void;
+  lang: Lang;
+}) {
+  const t = tx[lang];
+  const items: Array<{
+    id: Section;
+    label: string;
+    icon: React.ReactNode;
+    role?: Role;
+  }> =
+    role === "donor"
+      ? [
+          {
+            id: "overview",
+            label: t.home,
+            icon: <LayoutDashboard size={17} />,
+          },
+          { id: "blood", label: t.blood, icon: <DropletIcon /> },
+          {
+            id: "appointments",
+            label: t.appointments,
+            icon: <CalendarDays size={17} />,
+          },
+          { id: "organ", label: t.organ, icon: <BookOpen size={17} /> },
+          { id: "wish", label: t.wish, icon: <FileText size={17} /> },
+          { id: "family", label: t.family, icon: <Users size={17} /> },
+          {
+            id: "enquiries",
+            label: t.enquiries,
+            icon: <MessageCircle size={17} />,
+          },
+        ]
+      : [
+          {
+            id: "overview",
+            label: t.home,
+            icon: <LayoutDashboard size={17} />,
+          },
+          { id: "blood", label: t.blood, icon: <DropletIcon /> },
+          {
+            id: "appointments",
+            label: t.appointments,
+            icon: <CalendarDays size={17} />,
+          },
+          {
+            id: "enquiries",
+            label: t.enquiries,
+            icon: <MessageCircle size={17} />,
+          },
+          { id: "hospital", label: t.hospital, icon: <Hospital size={17} /> },
+        ];
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-label">
+        {role === "donor" ? t.sidebarDonor : t.sidebarCoordinator}
+      </div>
+      <nav aria-label="Application navigation" role="tablist">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            role="tab"
+            aria-selected={section === item.id}
+            className={section === item.id ? "active" : ""}
+            onClick={() => setSection(item.id)}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="sidebar-bottom">
+        <div className="privacy-note">
+          <LockKeyhole size={15} />
+          <span>
+            Private demo data
+            <br />
+            stored in this server process
+          </span>
+        </div>
+        <a href={NOTTO} target="_blank" rel="noopener noreferrer">
+          NOTTO source <ExternalLink size={12} />
+        </a>
+      </div>
+    </aside>
+  );
+}
+function AppShell({
+  lang,
+  setLang,
+  role,
+  onRoleChange,
+  section,
+  setSection,
+  children,
+}: {
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+  role: Role;
+  onRoleChange: (role: Role) => void;
+  section: Section;
+  setSection: (section: Section) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="app-shell">
+      <Header
+        lang={lang}
+        setLang={setLang}
+        role={role}
+        onRoleChange={onRoleChange}
+      />
+      <div className="app-body">
+        <Sidebar
+          role={role}
+          section={section}
+          setSection={setSection}
+          lang={lang}
+        />
+        <main id="main-content" className="app-main">{children}</main>
+      </div>
+    </div>
+  );
+}
+function PageHeader({
+  eyebrow,
+  title,
+  copy,
+  lang,
+  right,
+}: {
+  eyebrow: string;
+  title: string;
+  copy: string;
+  lang: Lang;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="page-header">
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h1>{title}</h1>
+        <p>{copy}</p>
+      </div>
+      {right}
+    </div>
+  );
+}
+function Metric({
+  label,
+  value,
+  note,
+  icon,
+  tone = "green",
+}: {
+  label: string;
+  value: string | number;
+  note: string;
+  icon: React.ReactNode;
+  tone?: string;
+}) {
+  return (
+    <article className="metric-card">
+      <span className={`metric-icon ${tone}`}>{icon}</span>
+      <div>
+        <p>{label}</p>
+        <strong>{value}</strong>
+        <small>{note}</small>
+      </div>
+    </article>
+  );
+}
+function Panel({
+  title,
+  copy,
+  icon,
+  action,
+  children,
+  className = "",
+}: {
+  title: string;
+  copy?: string;
+  icon?: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`app-panel ${className}`}>
+      <div className="panel-heading">
+        <div className="panel-heading-title">
+          {icon && <span className="panel-icon">{icon}</span>}
+          <div>
+            <h2>{title}</h2>
+            {copy && <p>{copy}</p>}
+          </div>
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+function Notice({
+  tone = "success",
+  children,
+  onClose,
+}: {
+  tone?: "success" | "error" | "info";
+  children: React.ReactNode;
+  onClose?: () => void;
+}) {
+  return (
+    <div
+      className={`notice ${tone}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      <Info size={16} /> <span>{children}</span>
+      {onClose && (
+        <button onClick={onClose} aria-label="Close">
+          <X size={15} />
+        </button>
+      )}
+    </div>
+  );
+}
 
-function DonorOverview({ data, lang, setSection }: { data: DonorData; lang: Lang; setSection: (section: Section) => void }) { const t = tx[lang]; const open = data.blood.requests.length; const responseCount = data.blood.responses.filter(item => item.status === 'available' || item.status === 'appointment proposed').length; const activeAppointment = data.blood.appointments.find(item => item.status === 'proposed' || item.status === 'confirmed'); return <><PageHeader eyebrow="DONOR PORTAL" title={t.donorTitle} copy={t.donorCopy} lang={lang} right={<span className="profile-chip"><span className="profile-avatar">D</span> Demo donor</span>} /><div className="metric-grid"><Metric label={t.openRequests} value={open} note="Published by hospitals" icon={<DropletIcon />} /><Metric label={t.availableResponses} value={responseCount} note="Your active responses" icon={<Users size={18} />} tone="blue" /><Metric label={t.awaitingAction} value={data.blood.appointments.filter(item => item.status === 'proposed').length} note="Review your next step" icon={<CalendarDays size={18} />} tone="amber" /><Metric label={t.openEnquiries} value={data.enquiries.filter(item => item.status !== 'resolved').length} note="Coordinator follow-up" icon={<MessageCircle size={18} />} tone="purple" /></div><div className="dashboard-grid"><Panel title="Your next action" copy="Suno keeps this explicit so a page view never becomes a decision." icon={<ArrowRight size={18} />} className="next-action-panel">{activeAppointment ? <div className="next-action"><span className="next-action-icon"><CalendarDays size={20} /></span><div><strong>{activeAppointment.status === 'proposed' ? t.proposed : t.confirmed}</strong><p>{activeAppointment.request?.hospitalName} · {activeAppointment.window}</p></div><button className="button primary small" onClick={() => setSection('appointments')}>Review <ChevronRight size={15} /></button></div> : <div className="next-action"><span className="next-action-icon"><DropletIcon /></span><div><strong>Find a blood volunteer request</strong><p>Availability starts a hospital conversation. Screening happens at the hospital.</p></div><button className="button outline small" onClick={() => setSection('blood')}>Browse <ChevronRight size={15} /></button></div>}</Panel><Panel title="Organ & tissue, at your pace" copy="A personal wish can sit alongside a separate blood workflow." icon={<BookOpen size={18} />} action={<button className="link-button" onClick={() => setSection('organ')}>Explore <ChevronRight size={14} /></button>}><div className="overview-callout"><span className="callout-icon"><HeartHandshake size={20} /></span><div><strong>{data.circle.wish ? 'Wish recorded for family conversation' : 'Start a private family conversation'}</strong><p>{data.circle.wish ? 'Your recorded wish is editable and is not an official pledge.' : 'Write a wish and invite two or three family members.'}</p></div></div></Panel></div><Panel title="Recent activity" copy="Only your own actions and donor-visible hospital updates appear here." icon={<Activity size={18} />}><div className="activity-list"><ActivityItem label="Donor portal opened" actor="You" at={Date.now()} /><ActivityItem label={data.circle.wish ? 'Personal wish available to edit' : 'No wish recorded yet'} actor="Suno" at={Date.now() - 1000 * 60 * 5} /><ActivityItem label="Public request list refreshed" actor="Suno" at={Date.now() - 1000 * 60 * 12} /></div></Panel></>; }
-function ActivityItem({ label, actor, at }: { label: string; actor: string; at: number }) { return <div className="activity-item"><span className="activity-dot" /><div><strong>{label}</strong><p>{actor} · {timeLabel(at)}</p></div></div>; }
+function DonorOverview({
+  data,
+  lang,
+  setSection,
+}: {
+  data: DonorData;
+  lang: Lang;
+  setSection: (section: Section) => void;
+}) {
+  const t = tx[lang];
+  const open = data.blood.requests.length;
+  const responseCount = data.blood.responses.filter(
+    (item) =>
+      item.status === "available" || item.status === "appointment proposed",
+  ).length;
+  const activeAppointment = data.blood.appointments.find(
+    (item) => item.status === "proposed" || item.status === "confirmed",
+  );
+  return (
+    <>
+      <PageHeader
+        eyebrow="DONOR PORTAL"
+        title={t.donorTitle}
+        copy={t.donorCopy}
+        lang={lang}
+        right={
+          <span className="profile-chip">
+            <span className="profile-avatar">D</span> Demo donor
+          </span>
+        }
+      />
+      <div className="metric-grid">
+        <Metric
+          label={t.openRequests}
+          value={open}
+          note="Published by hospitals"
+          icon={<DropletIcon />}
+        />
+        <Metric
+          label={t.availableResponses}
+          value={responseCount}
+          note="Your active responses"
+          icon={<Users size={18} />}
+          tone="blue"
+        />
+        <Metric
+          label={t.awaitingAction}
+          value={
+            data.blood.appointments.filter((item) => item.status === "proposed")
+              .length
+          }
+          note="Review your next step"
+          icon={<CalendarDays size={18} />}
+          tone="amber"
+        />
+        <Metric
+          label={t.openEnquiries}
+          value={
+            data.enquiries.filter((item) => item.status !== "resolved").length
+          }
+          note="Coordinator follow-up"
+          icon={<MessageCircle size={18} />}
+          tone="purple"
+        />
+      </div>
+      <div className="dashboard-grid">
+        <Panel
+          title="Your next action"
+          copy="Suno keeps this explicit so a page view never becomes a decision."
+          icon={<ArrowRight size={18} />}
+          className="next-action-panel"
+        >
+          {activeAppointment ? (
+            <div className="next-action">
+              <span className="next-action-icon">
+                <CalendarDays size={20} />
+              </span>
+              <div>
+                <strong>
+                  {activeAppointment.status === "proposed"
+                    ? t.proposed
+                    : t.confirmed}
+                </strong>
+                <p>
+                  {activeAppointment.request?.hospitalName} ·{" "}
+                  {activeAppointment.window}
+                </p>
+              </div>
+              <button
+                className="button primary small"
+                onClick={() => setSection("appointments")}
+              >
+                Review <ChevronRight size={15} />
+              </button>
+            </div>
+          ) : (
+            <div className="next-action">
+              <span className="next-action-icon">
+                <DropletIcon />
+              </span>
+              <div>
+                <strong>Find a blood volunteer request</strong>
+                <p>
+                  Availability starts a hospital conversation. Screening happens
+                  at the hospital.
+                </p>
+              </div>
+              <button
+                className="button outline small"
+                onClick={() => setSection("blood")}
+              >
+                Browse <ChevronRight size={15} />
+              </button>
+            </div>
+          )}
+        </Panel>
+        <Panel
+          title="Organ & tissue, at your pace"
+          copy="A personal wish can sit alongside a separate blood workflow."
+          icon={<BookOpen size={18} />}
+          action={
+            <button className="link-button" onClick={() => setSection("organ")}>
+              Explore <ChevronRight size={14} />
+            </button>
+          }
+        >
+          <div className="overview-callout">
+            <span className="callout-icon">
+              <HeartHandshake size={20} />
+            </span>
+            <div>
+              <strong>
+                {data.circle.wish
+                  ? "Wish recorded for family conversation"
+                  : "Start a private family conversation"}
+              </strong>
+              <p>
+                {data.circle.wish
+                  ? "Your recorded wish is editable and is not an official pledge."
+                  : "Write a wish and invite two or three family members."}
+              </p>
+            </div>
+          </div>
+        </Panel>
+      </div>
+      <Panel
+        title="Recent activity"
+        copy="Only your own actions and donor-visible hospital updates appear here."
+        icon={<Activity size={18} />}
+      >
+        <div className="activity-list">
+          <ActivityItem
+            label="Demo session created"
+            actor="You"
+            at={data.circle.createdAt}
+          />
+          {data.blood.responses.map((item) => (
+            <ActivityItem
+              key={item.id}
+              label={`Availability: ${item.status}`}
+              actor="You"
+              at={item.updatedAt}
+            />
+          ))}
+        </div>
+      </Panel>
+    </>
+  );
+}
+function ActivityItem({
+  label,
+  actor,
+  at,
+}: {
+  label: string;
+  actor: string;
+  at: number;
+}) {
+  return (
+    <div className="activity-item">
+      <span className="activity-dot" />
+      <div>
+        <strong>{label}</strong>
+        <p>
+          {actor} · {timeLabel(at)}
+        </p>
+      </div>
+    </div>
+  );
+}
 
-function DonorBlood({ data, lang, mutate }: { data: DonorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void> }) { const t = tx[lang]; const [search, setSearch] = useState(''); const [group, setGroup] = useState('all'); const filtered = data.blood.requests.filter(request => `${request.title} ${request.hospitalName} ${request.location}`.toLowerCase().includes(search.toLowerCase()) && (group === 'all' || request.bloodGroup === group)); const responseFor = (requestId: string) => data.blood.responses.find(response => response.requestId === requestId && response.status !== 'withdrawn'); return <><PageHeader eyebrow="BLOOD DONATION" title={t.bloodTitle} copy={t.bloodCopy} lang={lang} right={<span className="scope-note"><ShieldCheck size={15} /> Hospital screening remains the decision point</span>} /><div className="filter-bar"><label className="search-field"><Search size={16} /><span className="sr-only">{t.search}</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder={t.search} /></label><select value={group} onChange={event => setGroup(event.target.value)} aria-label={t.group}><option value="all">{t.allGroups}</option><option value="O+">O+</option><option value="A+">A+</option><option value="B+">B+</option></select></div>{filtered.length === 0 ? <div className="empty-panel"><Search size={28} /><strong>{t.noRequests}</strong></div> : <div className="request-grid">{filtered.map(request => { const response = responseFor(request.id); return <article className="request-card" key={request.id}><div className="request-card-top"><span className="blood-badge">{request.bloodGroup}</span><Status value="published" /></div><h2>{request.title}</h2><p className="request-hospital"><Hospital size={15} /> {request.hospitalName}</p><div className="request-facts"><span><CalendarDays size={15} /> {request.appointmentWindow}</span><span><Info size={15} /> {request.location}</span></div><p className="request-instruction">{request.instructions}</p><div className="request-card-footer"><span className="coordinator-line"><UserRound size={14} /> {request.coordinatorName} · {request.coordinatorRole}</span>{response ? <div className="inline-actions"><Status value={response.status} />{response.status === 'available' && <button className="link-button danger-link" onClick={() => mutate({ action: 'withdraw', requestId: request.id })}>{t.withdrawn}</button>}</div> : <button className="button primary small" onClick={() => mutate({ action: 'volunteer', requestId: request.id })}><Check size={15} /> {t.volunteer}</button>}</div></article>; })}</div>}<div className="boundary-note"><ShieldCheck size={16} /><span>{t.screening}</span></div></>; }
+function DonorBlood({
+  data,
+  lang,
+  mutate,
+}: {
+  data: DonorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const t = tx[lang];
+  const [search, setSearch] = useState("");
+  const [group, setGroup] = useState("all");
+  const filtered = data.blood.requests.filter(
+    (request) =>
+      `${request.title} ${request.hospitalName} ${request.location}`
+        .toLowerCase()
+        .includes(search.toLowerCase()) &&
+      (group === "all" || request.bloodGroup === group),
+  );
+  const responseFor = (requestId: string) =>
+    data.blood.responses.find(
+      (response) =>
+        response.requestId === requestId && response.status !== "withdrawn",
+    );
+  return (
+    <>
+      <PageHeader
+        eyebrow="BLOOD DONATION"
+        title={t.bloodTitle}
+        copy={t.bloodCopy}
+        lang={lang}
+        right={
+          <span className="scope-note">
+            <ShieldCheck size={15} /> Hospital screening remains the decision
+            point
+          </span>
+        }
+      />
+      <div className="filter-bar">
+        <label className="search-field">
+          <Search size={16} />
+          <span className="sr-only">{t.search}</span>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t.search}
+          />
+        </label>
+        <select
+          value={group}
+          onChange={(event) => setGroup(event.target.value)}
+          aria-label={t.group}
+        >
+          <option value="all">{t.allGroups}</option>
+          <option value="O+">O+</option>
+          <option value="A+">A+</option>
+          <option value="B+">B+</option>
+          {["O-", "A-", "B-", "AB+", "AB-"].map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="empty-panel">
+          <Search size={28} />
+          <strong>{t.noRequests}</strong>
+        </div>
+      ) : (
+        <div className="request-grid">
+          {filtered.map((request) => {
+            const response = responseFor(request.id);
+            return (
+              <article className="request-card" key={request.id}>
+                <div className="request-card-top">
+                  <span className="blood-badge">{request.bloodGroup}</span>
+                  <Status value="published" />
+                </div>
+                <h2>{request.title}</h2>
+                <p className="request-hospital">
+                  <Hospital size={15} /> {request.hospitalName}
+                </p>
+                <div className="request-facts">
+                  <span>
+                    <CalendarDays size={15} /> {request.appointmentWindow}
+                  </span>
+                  <span>
+                    <Info size={15} /> {request.location}
+                  </span>
+                </div>
+                <p className="request-instruction">{request.instructions}</p>
+                <details className="request-history">
+                  <summary>
+                    {t.details || "Request details & hospital contact"}
+                  </summary>
+                  <p>
+                    Created: {timeLabel(request.createdAt)} · Updated:{" "}
+                    {timeLabel(request.updatedAt)}
+                  </p>
+                  <p>{request.hospitalName} · Synthetic demo hospital</p>
+                  <p>
+                    Demo contact: +91 11 4000 1212 · 14 River Road, New Delhi
+                  </p>
+                  <p>
+                    Responsible coordinator: {request.coordinatorName} ·{" "}
+                    {request.coordinatorRole}
+                  </p>
+                  <p>
+                    Contact details are synthetic; no messages or calls are sent
+                    by Suno.
+                  </p>
+                </details>
+                <div className="request-card-footer">
+                  <span className="coordinator-line">
+                    <UserRound size={14} /> {request.coordinatorName} ·{" "}
+                    {request.coordinatorRole}
+                  </span>
+                  {response ? (
+                    <div className="inline-actions">
+                      <Status value={response.status} />
+                      {response.status === "available" && (
+                        <button
+                          className="link-button danger-link"
+                          onClick={() =>
+                            mutate({
+                              action: "withdraw",
+                              requestId: request.id,
+                            })
+                          }
+                        >
+                          {t.withdrawn}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      className="button primary small"
+                      onClick={() =>
+                        mutate({ action: "volunteer", requestId: request.id })
+                      }
+                    >
+                      <Check size={15} /> {t.volunteer}
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+      <div className="boundary-note">
+        <ShieldCheck size={16} />
+        <span>{t.screening}</span>
+      </div>
+    </>
+  );
+}
 
-function DonorAppointments({ data, lang, mutate }: { data: DonorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void> }) { const t = tx[lang]; return <><PageHeader eyebrow="BLOOD DONATION" title={t.myAppointments} copy={t.appointmentCopy} lang={lang} /><div className="appointment-list">{data.blood.appointments.length === 0 ? <div className="empty-panel"><CalendarDays size={28} /><strong>{t.noAppointments}</strong><p>When a coordinator proposes a time, it will appear here.</p></div> : data.blood.appointments.map(item => <article className="appointment-card" key={item.id}><div className="appointment-date"><CalendarDays size={18} /><strong>{item.window.split('·')[0]}</strong><span>{item.window.split('·')[1]}</span></div><div className="appointment-main"><div className="appointment-title"><h2>{item.request?.hospitalName || 'Hospital request'}</h2><Status value={item.status} /></div><p>{item.request?.location || 'Donation desk'} · {item.request?.bloodGroup || 'Blood request'}</p><small>{item.status === 'completed' ? t.completed : item.status === 'confirmed' ? 'Your appointment is confirmed. Follow hospital instructions.' : item.status === 'proposed' ? 'Review this proposed time and choose your response.' : item.reason || 'This appointment is closed.'}</small></div>{item.status === 'proposed' && <div className="appointment-actions"><button className="button primary small" onClick={() => mutate({ action: 'confirm', appointmentId: item.id })}>{t.confirm}</button><button className="button text small" onClick={() => mutate({ action: 'decline', appointmentId: item.id })}>{t.decline}</button></div>}{(item.status === 'confirmed' || item.status === 'proposed') && <button className="link-button danger-link" onClick={() => mutate({ action: 'cancel', appointmentId: item.id })}>{t.cancel}</button>}</article>)}</div><div className="boundary-note"><Info size={16} /><span>An appointment records coordination status. It does not record clinical eligibility or a completed donation.</span></div></>; }
+function DonorAppointments({
+  data,
+  lang,
+  mutate,
+}: {
+  data: DonorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const t = tx[lang];
+  return (
+    <>
+      <PageHeader
+        eyebrow="BLOOD DONATION"
+        title={t.myAppointments}
+        copy={t.appointmentCopy}
+        lang={lang}
+      />
+      <div className="appointment-list">
+        {data.blood.appointments.length === 0 ? (
+          <div className="empty-panel">
+            <CalendarDays size={28} />
+            <strong>{t.noAppointments}</strong>
+            <p>When a coordinator proposes a time, it will appear here.</p>
+          </div>
+        ) : (
+          data.blood.appointments.map((item) => (
+            <article className="appointment-card" key={item.id}>
+              <div className="appointment-date">
+                <CalendarDays size={18} />
+                <strong>{item.window.split("·")[0]}</strong>
+                <span>{item.window.split("·")[1]}</span>
+              </div>
+              <div className="appointment-main">
+                <div className="appointment-title">
+                  <h2>{item.request?.hospitalName || "Hospital request"}</h2>
+                  <Status value={item.status} />
+                </div>
+                <p>
+                  {item.request?.location || "Donation desk"} ·{" "}
+                  {item.request?.bloodGroup || "Blood request"}
+                </p>
+                <small>
+                  {item.status === "completed"
+                    ? t.completed
+                    : item.status === "confirmed"
+                      ? "Your appointment is confirmed. Follow hospital instructions."
+                      : item.status === "proposed"
+                        ? "Review this proposed time and choose your response."
+                        : item.reason || "This appointment is closed."}
+                </small>
+              </div>
+              {item.status === "proposed" && (
+                <div className="appointment-actions">
+                  <button
+                    className="button primary small"
+                    onClick={() =>
+                      mutate({ action: "confirm", appointmentId: item.id })
+                    }
+                  >
+                    {t.confirm}
+                  </button>
+                  <button
+                    className="button text small"
+                    onClick={() =>
+                      mutate({ action: "decline", appointmentId: item.id })
+                    }
+                  >
+                    {t.decline}
+                  </button>
+                </div>
+              )}
+              {(item.status === "confirmed" || item.status === "proposed") && (
+                <button
+                  className="link-button danger-link"
+                  onClick={() =>
+                    mutate({ action: "cancel", appointmentId: item.id })
+                  }
+                >
+                  {t.cancel}
+                </button>
+              )}
+            </article>
+          ))
+        )}
+      </div>
+      <div className="boundary-note">
+        <Info size={16} />
+        <span>
+          An appointment records coordination status. It does not record
+          clinical eligibility or a completed donation.
+        </span>
+      </div>
+    </>
+  );
+}
 
-function DonorOrgan({ data, lang, setSection }: { data: DonorData; lang: Lang; setSection: (section: Section) => void }) { const t = tx[lang]; return <><PageHeader eyebrow="ORGAN & TISSUE" title={t.organTitle} copy={t.organCopy} lang={lang} /><div className="organ-grid"><article className="organ-card accent"><span className="organ-card-icon"><BookOpen size={20} /></span><h2>{t.official}</h2><p>{t.officialCopy}</p><div className="card-actions"><a className="button primary small" href={NOTTO} target="_blank" rel="noopener noreferrer">NOTTO information <ExternalLink size={14} /></a><a className="link-button" href={PLEDGE} target="_blank" rel="noopener noreferrer">Official pledge route <ExternalLink size={13} /></a></div></article><article className="organ-card"><span className="organ-card-icon peach"><MessageCircle size={20} /></span><h2>{t.bodyCard}</h2><p>{t.bodyCopy}</p><button className="button outline small" onClick={() => setSection('family')}>Open Family Circle <ArrowRight size={14} /></button></article><article className="organ-card"><span className="organ-card-icon blue"><Stethoscope size={20} /></span><h2>{t.session}</h2><p>{t.sessionCopy}</p><button className="button outline small" onClick={() => setSection('enquiries')}>Ask a coordinator <ArrowRight size={14} /></button></article></div><div className="boundary-note"><ShieldCheck size={16} /><span>The organ flow does not list recipients, decide suitability, match organs, or create a pledge. Family acknowledgement is not consent.</span></div><Panel title="Your current conversation status" icon={<Users size={18} />}><div className="mini-status-grid"><div><span>Family members invited</span><strong>{data.circle.invites.length}/3</strong></div><div><span>Questions open</span><strong>{data.circle.invites.filter(invite => invite.status === 'question open').length}</strong></div><div><span>Official pledge</span><strong>External route</strong></div></div></Panel></>; }
+function DonorOrgan({
+  data,
+  lang,
+  setSection,
+}: {
+  data: DonorData;
+  lang: Lang;
+  setSection: (section: Section) => void;
+}) {
+  const t = tx[lang];
+  return (
+    <>
+      <PageHeader
+        eyebrow="ORGAN & TISSUE"
+        title={t.organTitle}
+        copy={t.organCopy}
+        lang={lang}
+      />
+      <div className="organ-grid">
+        <article className="organ-card accent">
+          <span className="organ-card-icon">
+            <BookOpen size={20} />
+          </span>
+          <h2>{t.official}</h2>
+          <p>{t.officialCopy}</p>
+          <div className="card-actions">
+            <a
+              className="button primary small"
+              href={NOTTO}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              NOTTO information <ExternalLink size={14} />
+            </a>
+            <a
+              className="link-button"
+              href={PLEDGE}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Official pledge route <ExternalLink size={13} />
+            </a>
+          </div>
+        </article>
+        <article className="organ-card">
+          <span className="organ-card-icon peach">
+            <MessageCircle size={20} />
+          </span>
+          <h2>{t.bodyCard}</h2>
+          <p>{t.bodyCopy}</p>
+          <button
+            className="button outline small"
+            onClick={() => setSection("family")}
+          >
+            Open Family Circle <ArrowRight size={14} />
+          </button>
+        </article>
+        <article className="organ-card">
+          <span className="organ-card-icon blue">
+            <Stethoscope size={20} />
+          </span>
+          <h2>{t.session}</h2>
+          <p>{t.sessionCopy}</p>
+          <button
+            className="button outline small"
+            onClick={() => setSection("enquiries")}
+          >
+            Ask a coordinator <ArrowRight size={14} />
+          </button>
+        </article>
+      </div>
+      <div className="boundary-note">
+        <ShieldCheck size={16} />
+        <span>
+          The organ flow does not list recipients, decide suitability, match
+          organs, or create a pledge. Family acknowledgement is not consent.
+        </span>
+      </div>
+      <Panel
+        title="Your current conversation status"
+        icon={<Users size={18} />}
+      >
+        <div className="mini-status-grid">
+          <div>
+            <span>Family members invited</span>
+            <strong>{data.circle.invites.length}/3</strong>
+          </div>
+          <div>
+            <span>Questions open</span>
+            <strong>
+              {
+                data.circle.invites.filter(
+                  (invite) => invite.status === "question open",
+                ).length
+              }
+            </strong>
+          </div>
+          <div>
+            <span>Official pledge</span>
+            <strong>External route</strong>
+          </div>
+        </div>
+      </Panel>
+    </>
+  );
+}
 
-function WishEditor({ data, lang, mutate, onNotice }: { data: DonorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void>; onNotice: (message: string) => void }) { const t = tx[lang]; const [wish, setWish] = useState(data.circle.wish); const [busy, setBusy] = useState(false); useEffect(() => setWish(data.circle.wish), [data.circle.wish]); async function save() { setBusy(true); try { await mutate({ action: 'wish', wish }); onNotice(t.saved); } finally { setBusy(false); } } async function assist() { setBusy(true); try { const body = await requestJson('/api/assist', { method: 'POST', body: JSON.stringify({ wish }) }); setWish(body.suggestion); onNotice('Review the suggestion before saving.'); } finally { setBusy(false); } } return <><PageHeader eyebrow="ORGAN & TISSUE" title={t.wish} copy={t.wishCopy} lang={lang} /><Panel title="Your words" copy="No medical record, pledge ID, Aadhaar number, or emergency contact is requested." icon={<FileText size={18} />}><label className="field-label" htmlFor="wish">Personal wish</label><textarea id="wish" value={wish} onChange={event => setWish(event.target.value)} maxLength={800} rows={7} placeholder="I would like my family to understand my wish…" /><div className="field-meta"><span>{wish.length}/800</span><span>Editable before saving</span></div><div className="button-row"><button className="button outline" onClick={assist} disabled={busy || !wish.trim()}><Sparkles size={15} /> {t.assist}</button><button className="button primary" onClick={save} disabled={busy || !wish.trim()}><Check size={15} /> {t.saveWish}</button></div></Panel><Panel title={t.official} copy={t.officialCopy} icon={<BookOpen size={18} />}><div className="official-row"><span className="source-mark"><ShieldCheck size={18} /></span><div><strong>NOTTO information and official pledge route</strong><p>Review the official service directly. Suno only records a personal conversation wish.</p></div><a className="link-button" href={PLEDGE} target="_blank" rel="noopener noreferrer">Open route <ExternalLink size={14} /></a></div></Panel></>; }
+function WishEditor({
+  data,
+  lang,
+  mutate,
+  onNotice,
+}: {
+  data: DonorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+  onNotice: (message: string) => void;
+}) {
+  const t = tx[lang];
+  const [wish, setWish] = useState(data.circle.wish);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setWish(data.circle.wish), [data.circle.wish]);
+  async function save() {
+    setBusy(true);
+    try {
+      if (await mutate({ action: "wish", wish })) onNotice(t.saved);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function assist() {
+    setBusy(true);
+    try {
+      const body = await requestJson("/api/assist", {
+        method: "POST",
+        body: JSON.stringify({ wish }),
+      });
+      setWish(body.suggestion);
+      onNotice("Review the suggestion before saving.");
+    } catch {
+      onNotice(
+        "Writing assistance is unavailable. Your original text is unchanged.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <PageHeader
+        eyebrow="ORGAN & TISSUE"
+        title={t.wish}
+        copy={t.wishCopy}
+        lang={lang}
+      />
+      <Panel
+        title="Your words"
+        copy="No medical record, pledge ID, Aadhaar number, or emergency contact is requested."
+        icon={<FileText size={18} />}
+      >
+        <label className="field-label" htmlFor="wish">
+          Personal wish
+        </label>
+        <textarea
+          id="wish"
+          value={wish}
+          onChange={(event) => setWish(event.target.value)}
+          maxLength={800}
+          rows={7}
+          placeholder="I would like my family to understand my wish…"
+        />
+        <div className="field-meta">
+          <span>{wish.length}/800</span>
+          <span>Editable before saving</span>
+        </div>
+        <div className="button-row">
+          <button
+            className="button outline"
+            onClick={assist}
+            disabled={busy || !wish.trim()}
+          >
+            <Sparkles size={15} /> {t.assist}
+          </button>
+          <button
+            className="button primary"
+            onClick={save}
+            disabled={busy || !wish.trim()}
+          >
+            <Check size={15} /> {t.saveWish}
+          </button>
+        </div>
+      </Panel>
+      <Panel
+        title={t.official}
+        copy={t.officialCopy}
+        icon={<BookOpen size={18} />}
+      >
+        <div className="official-row">
+          <span className="source-mark">
+            <ShieldCheck size={18} />
+          </span>
+          <div>
+            <strong>NOTTO information and official pledge route</strong>
+            <p>
+              Review the official service directly. Suno only records a personal
+              conversation wish.
+            </p>
+          </div>
+          <a
+            className="link-button"
+            href={PLEDGE}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open route <ExternalLink size={14} />
+          </a>
+        </div>
+      </Panel>
+    </>
+  );
+}
 
-function DonorFamily({ data, lang, mutate, onNotice }: { data: DonorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void>; onNotice: (message: string) => void }) { const t = tx[lang]; const [name, setName] = useState(''); const [copied, setCopied] = useState(''); const [busy, setBusy] = useState(false); const [summary, setSummary] = useState(''); useEffect(() => setSummary(data.circle.invites.map(invite => `${invite.name}: ${invite.status}${invite.question ? `\n${invite.question}` : ''}`).join('\n\n')), [data.circle.invites]); async function add() { setBusy(true); try { await mutate({ action: 'invite', name }); setName(''); } finally { setBusy(false); } } async function copy(token: string) { await navigator.clipboard.writeText(`${window.location.origin}/invite/${token}`); setCopied(token); onNotice('Invitation link copied.'); } return <><PageHeader eyebrow="ORGAN & TISSUE" title={t.family} copy={t.inviteCopy} lang={lang} /><Panel title={t.invite} copy={t.inviteCopy} icon={<Users size={18} />}><div className="invite-form"><div><label className="field-label" htmlFor="member-name">{t.memberName}</label><input id="member-name" value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Mother" maxLength={40} /></div><button className="button primary" disabled={busy || !name.trim() || data.circle.invites.length >= 3} onClick={add}><Plus size={16} /> {t.addMember}</button></div><div className="invite-list">{data.circle.invites.length === 0 ? <div className="empty-inline"><Users size={20} /> No family invitations yet.</div> : data.circle.invites.map(invite => <div className="invite-row" key={invite.token}><span className="profile-avatar">{invite.name[0]?.toUpperCase()}</span><div className="invite-row-main"><strong>{invite.name}</strong><Status value={invite.status} /><small><LockKeyhole size={12} /> Expires in 24 hours</small></div><div className="row-actions"><button className="link-button" onClick={() => copy(invite.token)}><Copy size={14} /> {copied === invite.token ? 'Copied' : t.copyLink}</button><a className="link-button" href={`/invite/${invite.token}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> {t.openView}</a></div></div>)}</div></Panel><Panel title={t.summary} copy={t.summaryCopy} icon={<ClipboardList size={18} />}><div className="summary-people">{data.circle.invites.length === 0 ? <div className="empty-inline">Invite family to build a summary.</div> : data.circle.invites.map(invite => <div className="summary-row" key={invite.token}><div><strong>{invite.name}</strong><Status value={invite.status} /></div>{invite.question ? <p>{invite.question}</p> : <small>No question recorded.</small>}</div>)}</div><label className="field-label" htmlFor="summary">Editable summary</label><textarea id="summary" rows={7} value={summary} onChange={event => setSummary(event.target.value)} /><div className="summary-footer"><p>{t.disclaimer}</p><button className="button outline" onClick={() => window.print()}><FileText size={15} /> {t.print}</button></div></Panel></>; }
+function DonorFamily({
+  data,
+  lang,
+  mutate,
+  onNotice,
+}: {
+  data: DonorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+  onNotice: (message: string) => void;
+}) {
+  const t = tx[lang];
+  const [name, setName] = useState("");
+  const [copied, setCopied] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState("");
+  useEffect(
+    () =>
+      setSummary(
+        data.circle.summary ??
+          data.circle.invites
+            .map(
+              (invite) =>
+                `${invite.name}: ${invite.status}${invite.question ? `\n${invite.question}` : ""}`,
+            )
+            .join("\n\n"),
+      ),
+    [data.circle.invites, data.circle.summary],
+  );
+  async function add() {
+    setBusy(true);
+    try {
+      if (await mutate({ action: "invite", name })) setName("");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function copy(token: string) {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/invite/${token}`,
+      );
+      setCopied(token);
+      onNotice("Invitation link copied.");
+    } catch {
+      onNotice("Copy unavailable. Open the family view and copy its address.");
+    }
+  }
+  return (
+    <>
+      <PageHeader
+        eyebrow="ORGAN & TISSUE"
+        title={t.family}
+        copy={t.inviteCopy}
+        lang={lang}
+      />
+      <Panel title={t.invite} copy={t.inviteCopy} icon={<Users size={18} />}>
+        <div className="invite-form">
+          <div>
+            <label className="field-label" htmlFor="member-name">
+              {t.memberName}
+            </label>
+            <input
+              id="member-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. Mother"
+              maxLength={40}
+            />
+          </div>
+          <button
+            className="button primary"
+            disabled={busy || !name.trim() || data.circle.invites.length >= 3}
+            onClick={add}
+          >
+            <Plus size={16} /> {t.addMember}
+          </button>
+        </div>
+        <div className="invite-list">
+          {data.circle.invites.length === 0 ? (
+            <div className="empty-inline">
+              <Users size={20} /> No family invitations yet.
+            </div>
+          ) : (
+            data.circle.invites.map((invite) => (
+              <div className="invite-row" key={invite.token}>
+                <span className="profile-avatar">
+                  {invite.name[0]?.toUpperCase()}
+                </span>
+                <div className="invite-row-main">
+                  <strong>{invite.name}</strong>
+                  <Status value={invite.status} />
+                  <small>
+                    <LockKeyhole size={12} /> Expires in 24 hours
+                  </small>
+                </div>
+                <div className="row-actions">
+                  <button
+                    className="link-button"
+                    onClick={() => copy(invite.token)}
+                  >
+                    <Copy size={14} />{" "}
+                    {copied === invite.token ? "Copied" : t.copyLink}
+                  </button>
+                  <a
+                    className="link-button"
+                    href={`/invite/${invite.token}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink size={14} /> {t.openView}
+                  </a>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <button
+          className="danger-button"
+          onClick={() => {
+            if (
+              window.confirm(
+                "Delete the wish, invitations, and family responses?",
+              )
+            )
+              mutate({ action: "delete" });
+          }}
+        >
+          <Trash2 size={15} /> Delete family circle
+        </button>
+      </Panel>
+      <Panel
+        className="summary-panel"
+        title={t.summary}
+        copy={t.summaryCopy}
+        icon={<ClipboardList size={18} />}
+      >
+        <div className="summary-people">
+          {data.circle.invites.length === 0 ? (
+            <div className="empty-inline">
+              Invite family to build a summary.
+            </div>
+          ) : (
+            data.circle.invites.map((invite) => (
+              <div className="summary-row" key={invite.token}>
+                <div>
+                  <strong>{invite.name}</strong>
+                  <Status value={invite.status} />
+                </div>
+                {invite.question ? (
+                  <p>{invite.question}</p>
+                ) : (
+                  <small>No question recorded.</small>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+        <div className="print-summary">
+          <h2>Suno conversation summary</h2>
+          <p>{data.circle.wish}</p>
+          <pre>{summary}</pre>
+          <p>{t.disclaimer}</p>
+          <p>Official information: https://notto.mohfw.gov.in/</p>
+        </div>
+        <label className="field-label" htmlFor="summary">
+          Editable summary
+        </label>
+        <textarea
+          id="summary"
+          rows={7}
+          value={summary}
+          onChange={(event) => setSummary(event.target.value)}
+        />
+        <div className="summary-footer">
+          <button
+            className="button outline"
+            onClick={() => mutate({ action: "summary", summary })}
+          >
+            Save summary
+          </button>
+          <p>{t.disclaimer}</p>
+          <button className="button outline" onClick={() => window.print()}>
+            <FileText size={15} /> {t.print}
+          </button>
+        </div>
+      </Panel>
+    </>
+  );
+}
 
-function DonorEnquiries({ data, lang, mutate }: { data: DonorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void> }) { const t = tx[lang]; const [question, setQuestion] = useState(''); const [sent, setSent] = useState(false); async function send() { await mutate({ action: 'request-follow-up', question, language: lang }); setQuestion(''); setSent(true); } return <><PageHeader eyebrow="COORDINATOR FOLLOW-UP" title={t.enquiries} copy={t.sessionCopy} lang={lang} /><Panel title={t.session} copy={t.sessionCopy} icon={<MessageCircle size={18} />}><label className="field-label" htmlFor="follow-up">{t.questionPlaceholder}</label><textarea id="follow-up" value={question} onChange={event => setQuestion(event.target.value)} maxLength={600} rows={5} placeholder={t.questionPlaceholder} /><div className="button-row"><button className="button primary" disabled={!question.trim()} onClick={send}><Send size={15} /> {sent ? t.followupSent : t.sendFollowup}</button></div></Panel><Panel title="Your enquiry history" copy="A follow-up stays open until a coordinator updates it." icon={<Activity size={18} />}>{data.enquiries.length === 0 ? <div className="empty-inline">No coordinator enquiries yet.</div> : <div className="enquiry-list">{data.enquiries.map(enquiry => <div className="enquiry-row" key={enquiry.id}><div className="enquiry-row-top"><strong>{enquiry.subject}</strong><Status value={enquiry.status} /></div><p>{enquiry.question}</p>{enquiry.answer && <div className="coordinator-answer"><CheckCircle2 size={14} /> {enquiry.answer}</div>}</div>)}</div>}</Panel></>; }
+function DonorEnquiries({
+  data,
+  lang,
+  mutate,
+}: {
+  data: DonorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const t = tx[lang];
+  const [question, setQuestion] = useState("");
+  const [sent, setSent] = useState(false);
+  async function send() {
+    if (
+      !(await mutate({ action: "request-follow-up", question, language: lang }))
+    )
+      return;
+    setQuestion("");
+    setSent(true);
+  }
+  return (
+    <>
+      <PageHeader
+        eyebrow="COORDINATOR FOLLOW-UP"
+        title={t.enquiries}
+        copy={t.sessionCopy}
+        lang={lang}
+      />
+      <Panel
+        title={t.session}
+        copy={t.sessionCopy}
+        icon={<MessageCircle size={18} />}
+      >
+        <label className="field-label" htmlFor="follow-up">
+          {t.questionPlaceholder}
+        </label>
+        <textarea
+          id="follow-up"
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          maxLength={600}
+          rows={5}
+          placeholder={t.questionPlaceholder}
+        />
+        <div className="button-row">
+          <button
+            className="button primary"
+            disabled={!question.trim()}
+            onClick={send}
+          >
+            <Send size={15} /> {sent ? t.followupSent : t.sendFollowup}
+          </button>
+        </div>
+      </Panel>
+      <Panel
+        title="Your enquiry history"
+        copy="A follow-up stays open until a coordinator updates it."
+        icon={<Activity size={18} />}
+      >
+        {data.enquiries.length === 0 ? (
+          <div className="empty-inline">No coordinator enquiries yet.</div>
+        ) : (
+          <div className="enquiry-list">
+            {data.enquiries.map((enquiry) => (
+              <div className="enquiry-row" key={enquiry.id}>
+                <div className="enquiry-row-top">
+                  <strong>{enquiry.subject}</strong>
+                  <Status value={enquiry.status} />
+                </div>
+                <p>{enquiry.question}</p>
+                {enquiry.answer && (
+                  <div className="coordinator-answer">
+                    <CheckCircle2 size={14} /> {enquiry.answer}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </>
+  );
+}
 
-function CoordinatorOverview({ data, lang, setSection }: { data: CoordinatorData; lang: Lang; setSection: (section: Section) => void }) { const t = tx[lang]; const openRequests = data.requests.filter(request => request.status === 'published').length; const available = data.requests.flatMap(request => request.responses).filter(response => response.status === 'available').length; const awaiting = data.requests.flatMap(request => request.appointments).filter(item => item.status === 'proposed').length; const openEnquiries = data.enquiries.filter(item => item.status !== 'resolved').length; return <><PageHeader eyebrow="HOSPITAL COORDINATION" title={t.coordinatorTitle} copy={t.coordinatorCopy} lang={lang} right={<span className="profile-chip"><span className="profile-avatar">AM</span> Dr. Ananya Mehta</span>} /><div className="metric-grid"><Metric label={t.openRequests} value={openRequests} note="Published blood requests" icon={<DropletIcon />} /><Metric label={t.availableResponses} value={available} note="Need review" icon={<Users size={18} />} tone="blue" /><Metric label={t.awaitingAction} value={awaiting} note="Proposals to answer" icon={<CalendarDays size={18} />} tone="amber" /><Metric label={t.openEnquiries} value={openEnquiries} note="Coordinator follow-up" icon={<MessageCircle size={18} />} tone="purple" /></div><div className="dashboard-grid coordinator-grid"><Panel title="Blood request queue" copy="See what needs a coordinator action." icon={<DropletIcon />} action={<button className="link-button" onClick={() => setSection('blood')}>Open queue <ChevronRight size={14} /></button>}><div className="queue-list">{data.requests.slice(0, 4).map(request => <div className="queue-row" key={request.id}><span className="blood-badge small-blood">{request.bloodGroup}</span><div><strong>{request.title}</strong><small>{request.responses.filter(response => response.status === 'available').length} available · {request.appointments.filter(appointment => appointment.status === 'proposed').length} proposed</small></div><Status value={request.status} /></div>)}</div></Panel><Panel title="Enquiries needing a next step" copy="Open questions are visible without exposing internal notes." icon={<MessageCircle size={18} />} action={<button className="link-button" onClick={() => setSection('enquiries')}>Review <ChevronRight size={14} /></button>}><div className="queue-list">{data.enquiries.filter(item => item.status !== 'resolved').slice(0, 4).map(enquiry => <div className="queue-row" key={enquiry.id}><span className="queue-icon"><CircleHelp size={16} /></span><div><strong>{enquiry.subject}</strong><small>{enquiry.question.slice(0, 75)}{enquiry.question.length > 75 ? '…' : ''}</small></div><Status value={enquiry.status} /></div>)}</div>{data.enquiries.filter(item => item.status !== 'resolved').length === 0 && <div className="empty-inline">No open enquiries.</div>}</Panel></div><Panel title={t.recentActivity} copy="Activity records show who changed a coordination record and when." icon={<Activity size={18} />}><div className="activity-list">{data.recentActivity.map(item => <ActivityItem key={item.id} label={item.label} actor={`${item.actor} · ${item.actorRole}`} at={item.at} />)}</div></Panel></>; }
+function CoordinatorOverview({
+  data,
+  lang,
+  setSection,
+}: {
+  data: CoordinatorData;
+  lang: Lang;
+  setSection: (section: Section) => void;
+}) {
+  const t = tx[lang];
+  const openRequests = data.requests.filter(
+    (request) => request.status === "published",
+  ).length;
+  const available = data.requests
+    .flatMap((request) => request.responses)
+    .filter((response) => response.status === "available").length;
+  const awaiting = data.requests
+    .flatMap((request) => request.appointments)
+    .filter((item) => item.status === "proposed").length;
+  const openEnquiries = data.enquiries.filter(
+    (item) => item.status !== "resolved",
+  ).length;
+  return (
+    <>
+      <PageHeader
+        eyebrow="HOSPITAL COORDINATION"
+        title={t.coordinatorTitle}
+        copy={t.coordinatorCopy}
+        lang={lang}
+        right={
+          <span className="profile-chip">
+            <span className="profile-avatar">AM</span> Dr. Ananya Mehta
+          </span>
+        }
+      />
+      <div className="metric-grid">
+        <Metric
+          label={t.openRequests}
+          value={openRequests}
+          note="Published blood requests"
+          icon={<DropletIcon />}
+        />
+        <Metric
+          label={t.availableResponses}
+          value={available}
+          note="Need review"
+          icon={<Users size={18} />}
+          tone="blue"
+        />
+        <Metric
+          label={t.awaitingAction}
+          value={awaiting}
+          note="Proposals to answer"
+          icon={<CalendarDays size={18} />}
+          tone="amber"
+        />
+        <Metric
+          label={t.openEnquiries}
+          value={openEnquiries}
+          note="Coordinator follow-up"
+          icon={<MessageCircle size={18} />}
+          tone="purple"
+        />
+      </div>
+      <div className="dashboard-grid coordinator-grid">
+        <Panel
+          title="Blood request queue"
+          copy="See what needs a coordinator action."
+          icon={<DropletIcon />}
+          action={
+            <button className="link-button" onClick={() => setSection("blood")}>
+              Open queue <ChevronRight size={14} />
+            </button>
+          }
+        >
+          <div className="queue-list">
+            {data.requests.slice(0, 4).map((request) => (
+              <div className="queue-row" key={request.id}>
+                <span className="blood-badge small-blood">
+                  {request.bloodGroup}
+                </span>
+                <div>
+                  <strong>{request.title}</strong>
+                  <small>
+                    {
+                      request.responses.filter(
+                        (response) => response.status === "available",
+                      ).length
+                    }{" "}
+                    available ·{" "}
+                    {
+                      request.appointments.filter(
+                        (appointment) => appointment.status === "proposed",
+                      ).length
+                    }{" "}
+                    proposed
+                  </small>
+                </div>
+                <Status value={request.status} />
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel
+          title="Enquiries needing a next step"
+          copy="Open questions are visible without exposing internal notes."
+          icon={<MessageCircle size={18} />}
+          action={
+            <button
+              className="link-button"
+              onClick={() => setSection("enquiries")}
+            >
+              Review <ChevronRight size={14} />
+            </button>
+          }
+        >
+          <div className="queue-list">
+            {data.enquiries
+              .filter((item) => item.status !== "resolved")
+              .slice(0, 4)
+              .map((enquiry) => (
+                <div className="queue-row" key={enquiry.id}>
+                  <span className="queue-icon">
+                    <CircleHelp size={16} />
+                  </span>
+                  <div>
+                    <strong>{enquiry.subject}</strong>
+                    <small>
+                      {enquiry.question.slice(0, 75)}
+                      {enquiry.question.length > 75 ? "…" : ""}
+                    </small>
+                  </div>
+                  <Status value={enquiry.status} />
+                </div>
+              ))}
+          </div>
+          {data.enquiries.filter((item) => item.status !== "resolved")
+            .length === 0 && (
+            <div className="empty-inline">No open enquiries.</div>
+          )}
+        </Panel>
+      </div>
+      <Panel
+        title={t.recentActivity}
+        copy="Activity records show who changed a coordination record and when."
+        icon={<Activity size={18} />}
+      >
+        <div className="activity-list">
+          {data.recentActivity.map((item) => (
+            <ActivityItem
+              key={item.id}
+              label={item.label}
+              actor={`${item.actor} · ${item.actorRole}`}
+              at={item.at}
+            />
+          ))}
+        </div>
+      </Panel>
+    </>
+  );
+}
 
-function CoordinatorBlood({ data, lang, mutate }: { data: CoordinatorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void> }) { const t = tx[lang]; const [selected, setSelected] = useState(data.requests[0]?.id); const [showForm, setShowForm] = useState(false); const [form, setForm] = useState({ title: '', location: '', bloodGroup: 'O+', appointmentWindow: '', instructions: '' }); const request = data.requests.find(item => item.id === selected) ?? data.requests[0]; async function create() { await mutate({ action: 'create-request', ...form }); setForm({ title: '', location: '', bloodGroup: 'O+', appointmentWindow: '', instructions: '' }); setShowForm(false); } return <><PageHeader eyebrow="BLOOD REQUESTS" title={t.bloodTitle} copy="Publish and coordinate volunteer requests with explicit state transitions." lang={lang} right={<button className="button primary small" onClick={() => setShowForm(!showForm)}><Plus size={15} /> {t.createRequest}</button>} />{showForm && <Panel title={t.newRequest} copy="New requests begin as drafts and need an explicit publish action." icon={<Plus size={18} />}><div className="form-grid"><div><label className="field-label" htmlFor="request-title">{t.title}</label><input id="request-title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Weekend volunteer session" /></div><div><label className="field-label" htmlFor="request-group">{t.group}</label><select id="request-group" value={form.bloodGroup} onChange={e => setForm({ ...form, bloodGroup: e.target.value })}><option>O+</option><option>A+</option><option>B+</option><option>AB+</option></select></div><div><label className="field-label" htmlFor="request-location">{t.location}</label><input id="request-location" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="East Wing · Donation desk" /></div><div><label className="field-label" htmlFor="request-window">{t.window}</label><input id="request-window" value={form.appointmentWindow} onChange={e => setForm({ ...form, appointmentWindow: e.target.value })} placeholder="Sat 28 Nov · 09:00–13:00" /></div></div><label className="field-label" htmlFor="request-instructions">{t.instructions}</label><textarea id="request-instructions" value={form.instructions} onChange={e => setForm({ ...form, instructions: e.target.value })} rows={3} /><div className="button-row"><button className="button primary" disabled={!form.title || !form.location || !form.appointmentWindow} onClick={create}><Check size={15} /> {t.create}</button></div></Panel>}<div className="coordinator-request-layout"><Panel title="Request queue" copy="Draft → published → closed" icon={<ClipboardList size={18} />}><div className="request-table">{data.requests.map(item => <button className={`request-table-row ${request?.id === item.id ? 'selected' : ''}`} key={item.id} onClick={() => setSelected(item.id)}><span className="blood-badge small-blood">{item.bloodGroup}</span><span className="request-table-copy"><strong>{item.title}</strong><small>{item.location} · {item.responses.length} response(s)</small></span><Status value={item.status} /></button>)}</div></Panel>{request && <Panel title={request.title} copy={`${request.hospitalName} · ${request.location}`} icon={<DropletIcon />}><div className="detail-facts"><div><span>{t.group}</span><strong>{request.bloodGroup}</strong></div><div><span>{t.window}</span><strong>{request.appointmentWindow}</strong></div><div><span>Created</span><strong>{timeLabel(request.createdAt)}</strong></div><div><span>Coordinator</span><strong>{request.coordinatorName}</strong></div></div><div className="detail-actions">{request.status === 'draft' && <button className="button primary small" onClick={() => mutate({ action: 'publish', requestId: request.id })}><Send size={14} /> {t.publish}</button>}{request.status === 'published' && <button className="button outline small" onClick={() => mutate({ action: 'close', requestId: request.id })}><X size={14} /> {t.close}</button>}</div><h3 className="subheading">Volunteer responses <span>{request.responses.length}</span></h3>{request.responses.length === 0 ? <div className="empty-inline">No volunteer responses yet. The donor portal can respond to this published request.</div> : <div className="response-list">{request.responses.map(response => <div className="response-row" key={response.id}><div><strong>{response.donorName}</strong><small>Availability shared · {timeLabel(response.createdAt)}</small></div><Status value={response.status} />{response.status === 'available' && <button className="button primary small" onClick={() => mutate({ action: 'propose', requestId: request.id, responseId: response.id })}>{t.propose}</button>}</div>)}</div>}<h3 className="subheading">Activity <span>{request.activity.length}</span></h3><div className="activity-list compact">{request.activity.slice(0, 5).map(item => <ActivityItem key={item.id} label={item.label} actor={item.actor} at={item.at} />)}</div><div className="internal-note"><LockKeyhole size={14} /><strong>{t.internal}</strong><p>{request.internalNote}</p></div></Panel>}</div></>; }
+function CoordinatorBlood({
+  data,
+  lang,
+  mutate,
+}: {
+  data: CoordinatorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const t = tx[lang];
+  const [selected, setSelected] = useState(data.requests[0]?.id);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState({
+    title: "",
+    location: "",
+    bloodGroup: "O+",
+    appointmentWindow: "",
+    instructions: "",
+  });
+  const request =
+    data.requests.find((item) => item.id === selected) ?? data.requests[0];
+  async function create() {
+    if (
+      !(await mutate({
+        action: editingId ? "edit-request" : "create-request",
+        requestId: editingId,
+        ...form,
+      }))
+    )
+      return;
+    setEditingId(null);
+    setForm({
+      title: "",
+      location: "",
+      bloodGroup: "O+",
+      appointmentWindow: "",
+      instructions: "",
+    });
+    setShowForm(false);
+  }
+  return (
+    <>
+      <PageHeader
+        eyebrow="BLOOD REQUESTS"
+        title={t.bloodTitle}
+        copy="Publish and coordinate volunteer requests with explicit state transitions."
+        lang={lang}
+        right={
+          <button
+            className="button primary small"
+            onClick={() => {
+              setEditingId(null);
+              setShowForm(!showForm);
+            }}
+          >
+            <Plus size={15} /> {t.createRequest}
+          </button>
+        }
+      />
+      {showForm && (
+        <Panel
+          title={t.newRequest}
+          copy="New requests begin as drafts and need an explicit publish action."
+          icon={<Plus size={18} />}
+        >
+          <div className="form-grid">
+            <div>
+              <label className="field-label" htmlFor="request-title">
+                {t.title}
+              </label>
+              <input
+                id="request-title"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="Weekend volunteer session"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="request-group">
+                {t.group}
+              </label>
+              <select
+                id="request-group"
+                value={form.bloodGroup}
+                onChange={(e) =>
+                  setForm({ ...form, bloodGroup: e.target.value })
+                }
+              >
+                {["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"].map(
+                  (value) => (
+                    <option key={value}>{value}</option>
+                  ),
+                )}
+              </select>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="request-location">
+                {t.location}
+              </label>
+              <input
+                id="request-location"
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                placeholder="East Wing · Donation desk"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="request-window">
+                {t.window}
+              </label>
+              <input
+                id="request-window"
+                value={form.appointmentWindow}
+                onChange={(e) =>
+                  setForm({ ...form, appointmentWindow: e.target.value })
+                }
+                placeholder="Sat 28 Nov · 09:00–13:00"
+              />
+            </div>
+          </div>
+          <label className="field-label" htmlFor="request-instructions">
+            {t.instructions}
+          </label>
+          <textarea
+            id="request-instructions"
+            value={form.instructions}
+            onChange={(e) => setForm({ ...form, instructions: e.target.value })}
+            rows={3}
+            maxLength={300}
+          />
+          <div className="button-row">
+            <button
+              className="button primary"
+              disabled={
+                !form.title || !form.location || !form.appointmentWindow
+              }
+              onClick={create}
+            >
+              <Check size={15} /> {t.create}
+            </button>
+          </div>
+        </Panel>
+      )}
+      <label className="search-field">
+        <Search size={16} />
+        <span className="sr-only">Search hospital requests</span>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search hospital requests"
+        />
+      </label>
+      <div className="coordinator-request-layout">
+        <Panel
+          title="Request queue"
+          copy="Draft → published → closed"
+          icon={<ClipboardList size={18} />}
+        >
+          <div className="request-table">
+            {data.requests
+              .filter((item) =>
+                `${item.title} ${item.location} ${item.bloodGroup} ${item.status}`
+                  .toLowerCase()
+                  .includes(search.toLowerCase()),
+              )
+              .map((item) => (
+                <button
+                  className={`request-table-row ${request?.id === item.id ? "selected" : ""}`}
+                  key={item.id}
+                  onClick={() => setSelected(item.id)}
+                >
+                  <span className="blood-badge small-blood">
+                    {item.bloodGroup}
+                  </span>
+                  <span className="request-table-copy">
+                    <strong>{item.title}</strong>
+                    <small>
+                      {item.location} · {item.responses.length} response(s)
+                    </small>
+                  </span>
+                  <Status value={item.status} />
+                </button>
+              ))}
+          </div>
+        </Panel>
+        {request && (
+          <Panel
+            title={request.title}
+            copy={`${request.hospitalName} · ${request.location}`}
+            icon={<DropletIcon />}
+          >
+            <div className="detail-facts">
+              <div>
+                <span>{t.group}</span>
+                <strong>{request.bloodGroup}</strong>
+              </div>
+              <div>
+                <span>{t.window}</span>
+                <strong>{request.appointmentWindow}</strong>
+              </div>
+              <div>
+                <span>Created</span>
+                <strong>{timeLabel(request.createdAt)}</strong>
+              </div>
+              <div>
+                <span>Coordinator</span>
+                <strong>{request.coordinatorName}</strong>
+              </div>
+            </div>
+            <div className="detail-actions">
+              {request.status === "draft" && (
+                <button
+                  className="button outline small"
+                  onClick={() => {
+                    setEditingId(request.id);
+                    setForm({
+                      title: request.title,
+                      location: request.location,
+                      bloodGroup: request.bloodGroup,
+                      appointmentWindow: request.appointmentWindow,
+                      instructions: request.instructions,
+                    });
+                    setShowForm(true);
+                  }}
+                >
+                  Edit draft
+                </button>
+              )}
+              {request.status === "draft" && (
+                <button
+                  className="button primary small"
+                  onClick={() =>
+                    mutate({ action: "publish", requestId: request.id })
+                  }
+                >
+                  <Send size={14} /> {t.publish}
+                </button>
+              )}
+              {request.status === "published" && (
+                <button
+                  className="button outline small"
+                  onClick={() =>
+                    mutate({ action: "close", requestId: request.id })
+                  }
+                >
+                  <X size={14} /> {t.close}
+                </button>
+              )}
+            </div>
+            <h3 className="subheading">
+              Volunteer responses <span>{request.responses.length}</span>
+            </h3>
+            {request.responses.length === 0 ? (
+              <div className="empty-inline">
+                No volunteer responses yet. The donor portal can respond to this
+                published request.
+              </div>
+            ) : (
+              <div className="response-list">
+                {request.responses.map((response) => (
+                  <div className="response-row" key={response.id}>
+                    <div>
+                      <strong>{response.donorName}</strong>
+                      <small>
+                        Availability shared · {timeLabel(response.createdAt)}
+                      </small>
+                    </div>
+                    <Status value={response.status} />
+                    {response.status === "available" && (
+                      <button
+                        className="button primary small"
+                        onClick={() =>
+                          mutate({
+                            action: "propose",
+                            requestId: request.id,
+                            responseId: response.id,
+                          })
+                        }
+                      >
+                        {t.propose}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <h3 className="subheading">
+              Activity <span>{request.activity.length}</span>
+            </h3>
+            <div className="activity-list compact">
+              {request.activity.slice(0, 5).map((item) => (
+                <ActivityItem
+                  key={item.id}
+                  label={item.label}
+                  actor={item.actor}
+                  at={item.at}
+                />
+              ))}
+            </div>
+            <div className="internal-note">
+              <LockKeyhole size={14} />
+              <strong>{t.internal}</strong>
+              <p>{request.internalNote}</p>
+            </div>
+          </Panel>
+        )}
+      </div>
+    </>
+  );
+}
 
-function CoordinatorAppointments({ data, lang, mutate }: { data: CoordinatorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void> }) { const t = tx[lang]; const appointments = data.requests.flatMap(request => request.appointments.map(appointment => ({ ...appointment, request }))); return <><PageHeader eyebrow="COORDINATION" title={t.appointments} copy="Review proposals, confirmed times, and administrative attendance records." lang={lang} /><Panel title="Appointment queue" copy="Completed means attendance was administratively recorded; it does not imply a clinical outcome." icon={<CalendarDays size={18} />}>{appointments.length === 0 ? <div className="empty-panel"><CalendarDays size={28} /><strong>No appointments yet</strong><p>When a donor responds, propose a time from the blood request detail.</p></div> : <div className="table-wrap"><table className="data-table"><thead><tr><th>Donor</th><th>Request</th><th>Window</th><th>Status</th><th>Next action</th></tr></thead><tbody>{appointments.map(item => <tr key={item.id}><td><strong>{item.donorName}</strong><small>Demo donor record</small></td><td>{item.request.title}</td><td>{item.window}</td><td><Status value={item.status} /></td><td>{item.status === 'confirmed' && <button className="link-button" onClick={() => mutate({ action: 'complete', appointmentId: item.id })}>{t.resolve} attendance</button>}{(item.status === 'proposed' || item.status === 'confirmed') && <button className="link-button danger-link" onClick={() => mutate({ action: 'cancel', appointmentId: item.id, reason: 'Cancelled by coordinator in demo.' })}>{t.cancel}</button>}</td></tr>)}</tbody></table></div>}</Panel></>; }
+function CoordinatorAppointments({
+  data,
+  lang,
+  mutate,
+}: {
+  data: CoordinatorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const t = tx[lang];
+  const appointments = data.requests.flatMap((request) =>
+    request.appointments.map((appointment) => ({ ...appointment, request })),
+  );
+  return (
+    <>
+      <PageHeader
+        eyebrow="COORDINATION"
+        title={t.appointments}
+        copy="Review proposals, confirmed times, and administrative attendance records."
+        lang={lang}
+      />
+      <Panel
+        title="Appointment queue"
+        copy="Completed means attendance was administratively recorded; it does not imply a clinical outcome."
+        icon={<CalendarDays size={18} />}
+      >
+        {appointments.length === 0 ? (
+          <div className="empty-panel">
+            <CalendarDays size={28} />
+            <strong>No appointments yet</strong>
+            <p>
+              When a donor responds, propose a time from the blood request
+              detail.
+            </p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Donor</th>
+                  <th>Request</th>
+                  <th>Window</th>
+                  <th>Status</th>
+                  <th>Next action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {appointments.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>{item.donorName}</strong>
+                      <small>Demo donor record</small>
+                    </td>
+                    <td>{item.request.title}</td>
+                    <td>{item.window}</td>
+                    <td>
+                      <Status value={item.status} />
+                    </td>
+                    <td>
+                      {item.status === "confirmed" && (
+                        <button
+                          className="link-button"
+                          onClick={() =>
+                            mutate({
+                              action: "complete",
+                              appointmentId: item.id,
+                            })
+                          }
+                        >
+                          {t.resolve} attendance
+                        </button>
+                      )}
+                      {(item.status === "proposed" ||
+                        item.status === "confirmed") && (
+                        <button
+                          className="link-button danger-link"
+                          onClick={() =>
+                            mutate({
+                              action: "cancel",
+                              appointmentId: item.id,
+                              reason: "Cancelled by coordinator in demo.",
+                            })
+                          }
+                        >
+                          {t.cancel}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+    </>
+  );
+}
 
-function CoordinatorEnquiries({ data, lang, mutate }: { data: CoordinatorData; lang: Lang; mutate: (action: Record<string, unknown>) => Promise<void> }) { const t = tx[lang]; const [answer, setAnswer] = useState<Record<string, string>>({}); return <><PageHeader eyebrow="FOLLOW-UP QUEUE" title={t.enquiries} copy="Open, acknowledge, and resolve donor questions with a traceable next step." lang={lang} /><div className="enquiry-grid">{data.enquiries.length === 0 ? <div className="empty-panel"><MessageCircle size={28} /><strong>No enquiries yet</strong></div> : data.enquiries.map(enquiry => <article className="coordinator-enquiry" key={enquiry.id}><div className="enquiry-row-top"><div><span className="eyebrow">{enquiry.type} · {enquiry.language === 'hi' ? 'Hindi' : 'English'}</span><h2>{enquiry.subject}</h2></div><Status value={enquiry.status} /></div><p className="enquiry-question">{enquiry.question}</p><div className="enquiry-meta"><span><UserRound size={14} /> Demo donor</span><span><Clock3 size={14} /> {timeLabel(enquiry.createdAt)}</span><span>{enquiry.requestFollowUp ? 'Follow-up requested' : 'Information only'}</span></div>{enquiry.status !== 'resolved' && <><label className="field-label" htmlFor={`answer-${enquiry.id}`}>{t.publicMessage}</label><textarea id={`answer-${enquiry.id}`} rows={3} value={answer[enquiry.id] ?? ''} onChange={event => setAnswer({ ...answer, [enquiry.id]: event.target.value })} placeholder="Write a clear next step for the donor…" /><div className="button-row"><button className="button outline small" onClick={() => mutate({ action: 'start-follow-up', enquiryId: enquiry.id, answer: answer[enquiry.id] })}>{t.startFollowup}</button><button className="button primary small" disabled={!answer[enquiry.id]?.trim()} onClick={() => mutate({ action: 'resolve', enquiryId: enquiry.id, answer: answer[enquiry.id] })}>{t.resolve}</button></div></>}{enquiry.answer && <div className="coordinator-answer"><CheckCircle2 size={14} /> {enquiry.answer}</div>}<div className="internal-note"><LockKeyhole size={14} /><strong>{t.internal}</strong><p>Keep internal follow-up notes on the coordinator side only.</p></div></article>)}</div></>; }
+function CoordinatorEnquiries({
+  data,
+  lang,
+  mutate,
+}: {
+  data: CoordinatorData;
+  lang: Lang;
+  mutate: (action: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const t = tx[lang];
+  const [answer, setAnswer] = useState<Record<string, string>>({});
+  return (
+    <>
+      <PageHeader
+        eyebrow="FOLLOW-UP QUEUE"
+        title={t.enquiries}
+        copy="Open, acknowledge, and resolve donor questions with a traceable next step."
+        lang={lang}
+      />
+      <div className="enquiry-grid">
+        {data.enquiries.length === 0 ? (
+          <div className="empty-panel">
+            <MessageCircle size={28} />
+            <strong>No enquiries yet</strong>
+          </div>
+        ) : (
+          data.enquiries.map((enquiry) => (
+            <article className="coordinator-enquiry" key={enquiry.id}>
+              <div className="enquiry-row-top">
+                <div>
+                  <span className="eyebrow">
+                    {enquiry.type} ·{" "}
+                    {enquiry.language === "hi" ? "Hindi" : "English"}
+                  </span>
+                  <h2>{enquiry.subject}</h2>
+                </div>
+                <Status value={enquiry.status} />
+              </div>
+              <p className="enquiry-question">{enquiry.question}</p>
+              <div className="enquiry-meta">
+                <span>
+                  <UserRound size={14} /> Demo donor
+                </span>
+                <span>
+                  <Clock3 size={14} /> {timeLabel(enquiry.createdAt)}
+                </span>
+                <span>
+                  {enquiry.requestFollowUp
+                    ? "Follow-up requested"
+                    : "Information only"}
+                </span>
+              </div>
+              {enquiry.status !== "resolved" && (
+                <>
+                  <label
+                    className="field-label"
+                    htmlFor={`answer-${enquiry.id}`}
+                  >
+                    {t.publicMessage}
+                  </label>
+                  <textarea
+                    id={`answer-${enquiry.id}`}
+                    rows={3}
+                    maxLength={500}
+                    value={answer[enquiry.id] ?? ""}
+                    onChange={(event) =>
+                      setAnswer({ ...answer, [enquiry.id]: event.target.value })
+                    }
+                    placeholder="Write a clear next step for the donor…"
+                  />
+                  <div className="button-row">
+                    <button
+                      className="button outline small"
+                      onClick={() =>
+                        mutate({
+                          action: "start-follow-up",
+                          enquiryId: enquiry.id,
+                          answer: answer[enquiry.id],
+                        })
+                      }
+                    >
+                      {t.startFollowup}
+                    </button>
+                    <button
+                      className="button primary small"
+                      disabled={!answer[enquiry.id]?.trim()}
+                      onClick={() =>
+                        mutate({
+                          action: "resolve",
+                          enquiryId: enquiry.id,
+                          answer: answer[enquiry.id],
+                        })
+                      }
+                    >
+                      {t.resolve}
+                    </button>
+                  </div>
+                </>
+              )}
+              {enquiry.answer && (
+                <div className="coordinator-answer">
+                  <CheckCircle2 size={14} /> {enquiry.answer}
+                </div>
+              )}
+              <div className="internal-note">
+                <LockKeyhole size={14} />
+                <strong>{t.internal}</strong>
+                <p>
+                  Keep internal follow-up notes on the coordinator side only.
+                </p>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </>
+  );
+}
 
-function CoordinatorHospital({ data, lang }: { data: CoordinatorData; lang: Lang }) { const t = tx[lang]; return <><PageHeader eyebrow="ACCOUNTABILITY" title={t.hospital} copy={t.profileCopy} lang={lang} /><div className="hospital-profile"><div className="hospital-profile-main"><span className="hospital-logo"><Hospital size={30} /></span><div><span className="eyebrow">DONATION COORDINATION PARTNER</span><h2>{data.hospital.name}</h2><p>{data.hospital.address}</p></div></div><div className="synthetic-banner"><ShieldCheck size={17} /><div><strong>{t.synthetic}</strong><p>{t.verificationCopy}</p></div></div><div className="profile-facts"><div><span>{t.phone}</span><strong>{data.hospital.phone}</strong></div><div><span>Coordinator</span><strong>{data.hospital.coordinatorName}</strong><small>{data.hospital.coordinatorRole}</small></div><div><span>{t.source}</span><strong>{data.hospital.source}</strong></div><div><span>{t.reviewed}</span><strong>{data.hospital.reviewedAt}</strong></div></div></div><div className="boundary-note"><Info size={16} /><span>Trust information shows who is responsible and where profile information came from. Suno does not create doctor ratings or a trust score.</span></div></>; }
+function CoordinatorHospital({
+  data,
+  lang,
+}: {
+  data: CoordinatorData;
+  lang: Lang;
+}) {
+  const t = tx[lang];
+  return (
+    <>
+      <PageHeader
+        eyebrow="ACCOUNTABILITY"
+        title={t.hospital}
+        copy={t.profileCopy}
+        lang={lang}
+      />
+      <div className="hospital-profile">
+        <div className="hospital-profile-main">
+          <span className="hospital-logo">
+            <Hospital size={30} />
+          </span>
+          <div>
+            <span className="eyebrow">DONATION COORDINATION PARTNER</span>
+            <h2>{data.hospital.name}</h2>
+            <p>{data.hospital.address}</p>
+          </div>
+        </div>
+        <div className="synthetic-banner">
+          <ShieldCheck size={17} />
+          <div>
+            <strong>{t.synthetic}</strong>
+            <p>{t.verificationCopy}</p>
+          </div>
+        </div>
+        <div className="profile-facts">
+          <div>
+            <span>{t.phone}</span>
+            <strong>{data.hospital.phone}</strong>
+          </div>
+          <div>
+            <span>Coordinator</span>
+            <strong>{data.hospital.coordinatorName}</strong>
+            <small>{data.hospital.coordinatorRole}</small>
+          </div>
+          <div>
+            <span>{t.source}</span>
+            <strong>{data.hospital.source}</strong>
+          </div>
+          <div>
+            <span>{t.reviewed}</span>
+            <strong>{data.hospital.reviewedAt}</strong>
+          </div>
+        </div>
+      </div>
+      <div className="boundary-note">
+        <Info size={16} />
+        <span>
+          Trust information shows who is responsible and where profile
+          information came from. Suno does not create doctor ratings or a trust
+          score.
+        </span>
+      </div>
+    </>
+  );
+}
 
-function MobileNav({ role, section, setSection, lang }: { role: Role; section: Section; setSection: (section: Section) => void; lang: Lang }) { const t = tx[lang]; const items: Array<[Section, string]> = role === 'donor' ? [['overview', t.home], ['blood', t.blood], ['appointments', t.appointments], ['organ', t.organ], ['wish', t.wish], ['family', t.family], ['enquiries', t.enquiries]] : [['overview', t.home], ['blood', t.blood], ['appointments', t.appointments], ['enquiries', t.enquiries], ['hospital', t.hospital]]; return <div className="mobile-section-nav"><Menu size={16} /><select value={section} onChange={event => setSection(event.target.value as Section)} aria-label="Choose section">{items.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>; }
+function MobileNav({
+  role,
+  section,
+  setSection,
+  lang,
+}: {
+  role: Role;
+  section: Section;
+  setSection: (section: Section) => void;
+  lang: Lang;
+}) {
+  const t = tx[lang];
+  const items: Array<[Section, string]> =
+    role === "donor"
+      ? [
+          ["overview", t.home],
+          ["blood", t.blood],
+          ["appointments", t.appointments],
+          ["organ", t.organ],
+          ["wish", t.wish],
+          ["family", t.family],
+          ["enquiries", t.enquiries],
+        ]
+      : [
+          ["overview", t.home],
+          ["blood", t.blood],
+          ["appointments", t.appointments],
+          ["enquiries", t.enquiries],
+          ["hospital", t.hospital],
+        ];
+  return (
+    <div className="mobile-section-nav">
+      <Menu size={16} />
+      <select
+        value={section}
+        onChange={(event) => setSection(event.target.value as Section)}
+        aria-label="Choose section"
+      >
+        {items.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
-export default function Home() { const [lang, setLang] = useState<Lang>('en'); const [role, setRole] = useState<Role | null>(null); const [section, setSection] = useState<Section>('overview'); const [session, setSession] = useState<Session>({ role: null }); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState(''); const [error, setError] = useState(''); const t = tx[lang]; useEffect(() => { requestJson('/api/bootstrap').then((data: Session) => { setSession(data); setRole(data.role); }).catch(() => setError(t.error)); }, [t.error]); async function start(nextRole: Role) { setBusy(true); setError(''); try { const data = await requestJson('/api/bootstrap', { method: 'POST', body: JSON.stringify({ role: nextRole, seeded: nextRole === 'donor' }) }); setSession(data); setRole(nextRole); setSection('overview'); } catch (err) { setError(err instanceof Error ? err.message : t.error); } finally { setBusy(false); } } async function mutate(action: Record<string, unknown>) { setBusy(true); setError(''); setNotice(''); try { const data = await requestJson('/api/portal', { method: 'POST', body: JSON.stringify(action) }); if (data.donor) setSession(current => ({ ...current, role: 'donor', donor: data.donor })); if (data.coordinatorData) setSession(current => ({ ...current, role: 'coordinator', coordinatorData: data.coordinatorData })); } catch (err) { setError(err instanceof Error ? err.message : t.error); } finally { setBusy(false); } } const switchRole = (nextRole: Role) => { start(nextRole); }; if (!role || (role === 'donor' && !session.donor) || (role === 'coordinator' && !session.coordinatorData)) return <Landing lang={lang} setLang={setLang} start={start} />; const data = role === 'donor' ? session.donor! : session.coordinatorData!; return <div className="site-shell" lang={lang}>{(busy || !session) && <div className="loading-bar" />}<AppShell lang={lang} setLang={setLang} role={role} onRoleChange={switchRole} section={section} setSection={setSection}><div className="mobile-section-nav"><Menu size={16} /><select value={section} onChange={event => setSection(event.target.value as Section)} aria-label="Choose section">{(role === 'donor' ? ['overview', 'blood', 'appointments', 'organ', 'wish', 'family', 'enquiries'] : ['overview', 'blood', 'appointments', 'enquiries', 'hospital']).map(item => <option key={item} value={item}>{item}</option>)}</select></div>{notice && <Notice onClose={() => setNotice('')}>{notice}</Notice>}{error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}{role === 'donor' ? <>{section === 'overview' && <DonorOverview data={data as DonorData} lang={lang} setSection={setSection} />}{section === 'blood' && <DonorBlood data={data as DonorData} lang={lang} mutate={mutate} />}{section === 'appointments' && <DonorAppointments data={data as DonorData} lang={lang} mutate={mutate} />}{section === 'organ' && <DonorOrgan data={data as DonorData} lang={lang} setSection={setSection} />}{section === 'wish' && <WishEditor data={data as DonorData} lang={lang} mutate={mutate} onNotice={setNotice} />}{section === 'family' && <DonorFamily data={data as DonorData} lang={lang} mutate={mutate} onNotice={setNotice} />}{section === 'enquiries' && <DonorEnquiries data={data as DonorData} lang={lang} mutate={mutate} />}</> : <>{section === 'overview' && <CoordinatorOverview data={data as CoordinatorData} lang={lang} setSection={setSection} />}{section === 'blood' && <CoordinatorBlood data={data as CoordinatorData} lang={lang} mutate={mutate} />}{section === 'appointments' && <CoordinatorAppointments data={data as CoordinatorData} lang={lang} mutate={mutate} />}{section === 'enquiries' && <CoordinatorEnquiries data={data as CoordinatorData} lang={lang} mutate={mutate} />}{section === 'hospital' && <CoordinatorHospital data={data as CoordinatorData} lang={lang} />}</>}</AppShell><footer className="app-footer"><span><HeartHandshake size={15} /> Suno</span><span>{t.disclaimer}</span><a href={NOTTO} target="_blank" rel="noopener noreferrer">NOTTO <ExternalLink size={12} /></a></footer></div>; }
+export default function Home() {
+  const [lang, setLang] = useState<Lang>("en");
+  const [role, setRole] = useState<Role | null>(null);
+  const [section, setSection] = useState<Section>("overview");
+  const [session, setSession] = useState<Session>({ role: null });
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const t = tx[lang];
+  useEffect(() => {
+    requestJson("/api/bootstrap")
+      .then((data: Session) => {
+        setSession(data);
+        setRole(data.role);
+      })
+      .catch(() => setError(t.error));
+  }, [t.error]);
+  useEffect(() => {
+    const refresh = () =>
+      requestJson("/api/bootstrap")
+        .then((value: Session) => {
+          setSession(value);
+          setRole(value.role);
+        })
+        .catch(() => {});
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+  async function start(nextRole: Role) {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await requestJson("/api/bootstrap", {
+        method: "POST",
+        body: JSON.stringify({ role: nextRole, seeded: nextRole === "donor" }),
+      });
+      setSession(data);
+      setRole(nextRole);
+      setSection("overview");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.error);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function mutate(action: Record<string, unknown>) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const circleAction = ["wish", "invite", "delete", "summary"].includes(
+        String(action.action),
+      );
+      const data = await requestJson(
+        circleAction ? "/api/circle" : "/api/portal",
+        {
+          method: "POST",
+          body: JSON.stringify(action),
+        },
+      );
+      if (data.circle)
+        setSession((current) => ({
+          ...current,
+          donor: current.donor
+            ? { ...current.donor, circle: data.circle }
+            : null,
+        }));
+      if (data.donor)
+        setSession((current) => ({
+          ...current,
+          role: "donor",
+          donor: data.donor,
+        }));
+      if (data.coordinatorData)
+        setSession((current) => ({
+          ...current,
+          role: "coordinator",
+          coordinatorData: data.coordinatorData,
+        }));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.error);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+  const switchRole = (nextRole: Role) => {
+    start(nextRole);
+  };
+  if (
+    !role ||
+    (role === "donor" && !session.donor) ||
+    (role === "coordinator" && !session.coordinatorData)
+  )
+    return <><div aria-live="polite">{busy && <p role="status">Opening demo…</p>}{error && <Notice tone="error">{error}</Notice>}</div><Landing lang={lang} setLang={setLang} start={start} /></>;
+  const data = role === "donor" ? session.donor! : session.coordinatorData!;
+  return (
+    <LanguageContext.Provider value={lang}>
+      <div className="site-shell" lang={lang} aria-busy={busy}>
+        {(busy || !session) && <div className="loading-bar" />}
+        <AppShell
+          lang={lang}
+          setLang={setLang}
+          role={role}
+          onRoleChange={switchRole}
+          section={section}
+          setSection={setSection}
+        >
+          <MobileNav
+            role={role}
+            section={section}
+            setSection={setSection}
+            lang={lang}
+          />
+          <div className="workspace-tools">
+            <button
+              className="link-button"
+              onClick={async () => {
+                try {
+                  const value = await requestJson("/api/bootstrap");
+                  setSession(value);
+                  setRole(value.role);
+                } catch {
+                  setError("Refresh failed. Please try again.");
+                }
+              }}
+            >
+              <RefreshCw size={14} /> Refresh records
+            </button>
+            <button
+              className="link-button"
+              onClick={() => {
+                if (window.confirm("Reset only this demo session?"))
+                  requestJson("/api/bootstrap", {
+                    method: "POST",
+                    body: JSON.stringify({ role, seeded: true, reset: true }),
+                  })
+                    .then((value) => {
+                      setSession(value);
+                      setSection("overview");
+                    })
+                    .catch(() => setError("Reset failed."));
+              }}
+            >
+              Reset my demo
+            </button>
+            <button
+              className="link-button"
+              onClick={() =>
+                window.alert(
+                  "Suno stores synthetic demo records in server memory for up to 24 hours. They reset on server restart. Invitation links expire in 24 hours. No invitation messages are sent. The Gemini assistant sends your question to Google when a key is configured. Do not enter personal or medical information into this demo.",
+                )
+              }
+            >
+              Privacy & demo details
+            </button>
+          </div>
+          {notice && <Notice onClose={() => setNotice("")}>{notice}</Notice>}
+          {error && (
+            <Notice tone="error" onClose={() => setError("")}>
+              {error}
+            </Notice>
+          )}
+          {role === "donor" ? (
+            <>
+              {section === "overview" && (
+                <DonorOverview
+                  data={data as DonorData}
+                  lang={lang}
+                  setSection={setSection}
+                />
+              )}
+              {section === "blood" && (
+                <DonorBlood
+                  data={data as DonorData}
+                  lang={lang}
+                  mutate={mutate}
+                />
+              )}
+              {section === "appointments" && (
+                <DonorAppointments
+                  data={data as DonorData}
+                  lang={lang}
+                  mutate={mutate}
+                />
+              )}
+              {section === "organ" && (
+                <DonorOrgan
+                  data={data as DonorData}
+                  lang={lang}
+                  setSection={setSection}
+                />
+              )}
+              {section === "wish" && (
+                <WishEditor
+                  data={data as DonorData}
+                  lang={lang}
+                  mutate={mutate}
+                  onNotice={setNotice}
+                />
+              )}
+              {section === "family" && (
+                <DonorFamily
+                  data={data as DonorData}
+                  lang={lang}
+                  mutate={mutate}
+                  onNotice={setNotice}
+                />
+              )}
+              {section === "enquiries" && (
+                <DonorEnquiries
+                  data={data as DonorData}
+                  lang={lang}
+                  mutate={mutate}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              {section === "overview" && (
+                <CoordinatorOverview
+                  data={data as CoordinatorData}
+                  lang={lang}
+                  setSection={setSection}
+                />
+              )}
+              {section === "blood" && (
+                <CoordinatorBlood
+                  data={data as CoordinatorData}
+                  lang={lang}
+                  mutate={mutate}
+                />
+              )}
+              {section === "appointments" && (
+                <CoordinatorAppointments
+                  data={data as CoordinatorData}
+                  lang={lang}
+                  mutate={mutate}
+                />
+              )}
+              {section === "enquiries" && (
+                <CoordinatorEnquiries
+                  data={data as CoordinatorData}
+                  lang={lang}
+                  mutate={mutate}
+                />
+              )}
+              {section === "hospital" && (
+                <CoordinatorHospital
+                  data={data as CoordinatorData}
+                  lang={lang}
+                />
+              )}
+            </>
+          )}
+        </AppShell>
+        <footer className="app-footer">
+          <span>
+            <HeartHandshake size={15} /> Suno
+          </span>
+          <span>{t.disclaimer}</span>
+          <a href={NOTTO} target="_blank" rel="noopener noreferrer">
+            NOTTO <ExternalLink size={12} />
+          </a>
+        </footer>
+      </div>
+    </LanguageContext.Provider>
+  );
+}

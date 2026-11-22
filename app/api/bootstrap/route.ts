@@ -1,32 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { coordinatorView, createCircle, donorBloodView, donorEnquiries, ensureDemoData, getCircle, getHospital, resetDemoData, safeDonorView } from '@/lib/store';
+import { NextRequest } from "next/server";
+import {
+  coordinatorView,
+  createCircle,
+  deleteCircle,
+  donorBloodView,
+  donorEnquiries,
+  getCircle,
+  getHospital,
+  resetDemoData,
+  safeDonorView,
+  withWorkspace,
+} from "@/lib/store";
+import {
+  createSession,
+  getSession,
+  privateJson,
+  readBody,
+  setSessionCookie,
+  type DemoSession,
+} from "@/lib/session";
+export const runtime = "nodejs";
 
-export const runtime = 'nodejs';
-
-function baseResponse(body: unknown) { return NextResponse.json(body, { headers: { 'Cache-Control': 'private, no-store' } }); }
-
-export async function GET(req: NextRequest) {
-  ensureDemoData();
-  const donorId = req.cookies.get('suno_demo')?.value;
-  const activeRole = req.cookies.get('suno_active_role')?.value;
-  const coordinator = activeRole === 'coordinator' && req.cookies.get('suno_coordinator')?.value === 'demo-coordinator';
-  return baseResponse({ mode: 'demo', role: coordinator ? 'coordinator' : donorId ? 'donor' : null, hospital: getHospital(), donor: donorId && getCircle(donorId) ? { circle: safeDonorView(getCircle(donorId)!), blood: donorBloodView(donorId), enquiries: donorEnquiries(donorId) } : null, coordinatorData: coordinator ? coordinatorView() : null });
+function view(session: DemoSession) {
+  const circle = getCircle(session.donorId);
+  return {
+    mode: "demo",
+    role: session.role,
+    hospital: getHospital(),
+    donor:
+      session.role === "donor" && circle
+        ? {
+            circle: safeDonorView(circle),
+            blood: donorBloodView(circle.id),
+            enquiries: donorEnquiries(circle.id),
+          }
+        : null,
+    coordinatorData: session.role === "coordinator" ? coordinatorView() : null,
+  };
 }
-
+export async function GET(req: NextRequest) {
+  const session = getSession(req);
+  return session
+    ? withWorkspace(session.id, () => privateJson(view(session)))
+    : privateJson({ mode: "demo", role: null });
+}
 export async function POST(req: NextRequest) {
-  let body: Record<string, unknown> = {};
-  try { body = await req.json(); } catch { /* use defaults */ }
-  const role = body.role === 'coordinator' ? 'coordinator' : 'donor';
-  if (body.reset === true) resetDemoData(); else ensureDemoData();
-  const response = role === 'coordinator' ? baseResponse({ mode: 'demo', role, hospital: getHospital(), coordinatorData: coordinatorView() }) : (() => {
-    const existingId = req.cookies.get('suno_demo')?.value;
-    const existing = existingId ? getCircle(existingId) : undefined;
-    const circle = existing ?? createCircle(body.seeded === true);
-    const res = baseResponse({ mode: 'demo', role, hospital: getHospital(), donor: { circle: safeDonorView(circle), blood: donorBloodView(circle.id), enquiries: donorEnquiries(circle.id) } });
-    res.cookies.set('suno_demo', circle.id, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 86400 });
-    return res;
-  })();
-  response.cookies.set('suno_active_role', role, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 86400 });
-  if (role === 'coordinator') response.cookies.set('suno_coordinator', 'demo-coordinator', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 86400 });
-  return response;
+  let body: Record<string, unknown>;
+  try {
+    body = await readBody(req);
+  } catch {
+    return privateJson({ error: "Invalid request." }, 400);
+  }
+  if (body.role !== "donor" && body.role !== "coordinator")
+    return privateJson({ error: "Choose a demo role." }, 400);
+  const session = getSession(req) ?? createSession(body.role);
+  session.role = body.role;
+  return withWorkspace(session.id, () => {
+    if (body.reset === true) {
+      if (session.donorId) deleteCircle(session.donorId);
+      session.donorId = undefined;
+      resetDemoData();
+    }
+    if (session.role === "donor" && !getCircle(session.donorId))
+      session.donorId = createCircle(body.seeded === true).id;
+    const response = privateJson(view(session));
+    setSessionCookie(response, session);
+    return response;
+  });
 }

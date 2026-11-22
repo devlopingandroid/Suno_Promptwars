@@ -1,13 +1,431 @@
-'use client';
-import { use, useEffect, useState } from 'react';
-import { BookOpen, CheckCircle2, CircleHelp, ExternalLink, HeartHandshake, MessageCircle, ShieldCheck, Trash2 } from 'lucide-react';
-type Lang='en'|'hi';
-type Result={category:string;answer:string|null;supportingExcerpt:string|null;status:'supported'|'unsupported';starter:string;source?:{title:string;url:string;reference:string;excerpt:string}};
-type View={wish:string;name:string;status:string;question?:string;result?:Result};
-const T={en:{invited:'You have been invited to listen',from:'A family member would like to share a personal wish with you. There is no pressure to respond in any particular way.',wish:'Their wish',choose:'How would you like to respond?',understand:'I understand your wish',question:'I have a question',notReady:'I am not ready to discuss this',ask:'Your question',placeholder:'What would you like to ask?',send:'Explore this question',confirm:'Save my response',answer:'What the source says',source:'Official source',excerpt:'Exact supporting excerpt',starter:'A gentle way to continue',unsupported:'I cannot verify an answer from the available sources.',open:'This question remains open. You can discuss it with someone you trust or an official information service.',yourResponse:'Your response',delete:'Delete my response',deleted:'Your response has been deleted.',saved:'Your response has been saved.',loading:'Opening private invitation…',invalid:'This invitation is invalid or has expired.',back:'Back to Suno',disclaimer:'This records a conversation. It is not an official pledge or legal consent.',demo:'Demo mode · synthetic data',notLegal:'Understanding the wish does not mean you agree or give legal consent.',notReadyHelp:'Your choice will be shown as “not ready to discuss.”',language:'हिंदी',sourceLink:'View original NOTTO document'},hi:{invited:'आपको बातचीत के लिए आमंत्रित किया गया है',from:'परिवार का एक सदस्य अपनी निजी इच्छा आपसे साझा करना चाहता है। किसी खास तरह से जवाब देने का दबाव नहीं है।',wish:'उनकी इच्छा',choose:'आप क्या कहना चाहेंगे?',understand:'मैं आपकी इच्छा समझता/समझती हूँ',question:'मेरा एक सवाल है',notReady:'मैं अभी इस पर बात नहीं करना चाहता/चाहती',ask:'आपका सवाल',placeholder:'आप क्या पूछना चाहेंगे?',send:'इस सवाल को समझें',confirm:'मेरी प्रतिक्रिया सहेजें',answer:'स्रोत क्या कहता है',source:'आधिकारिक स्रोत',excerpt:'स्रोत का सटीक अंश',starter:'बात आगे बढ़ाने का सहज तरीका',unsupported:'उपलब्ध स्रोतों से मैं इस सवाल का उत्तर सत्यापित नहीं कर सकता।',open:'यह सवाल खुला है। आप किसी भरोसेमंद व्यक्ति या आधिकारिक जानकारी सेवा से बात कर सकते हैं।',yourResponse:'आपकी प्रतिक्रिया',delete:'मेरी प्रतिक्रिया हटाएँ',deleted:'आपकी प्रतिक्रिया हटा दी गई है।',saved:'आपकी प्रतिक्रिया सहेजी गई है।',loading:'निजी आमंत्रण खुल रहा है…',invalid:'यह आमंत्रण अमान्य है या इसकी समय सीमा समाप्त हो गई है।',back:'Suno पर वापस जाएँ',disclaimer:'यह बातचीत का रिकॉर्ड है। यह आधिकारिक प्रतिज्ञा या कानूनी सहमति नहीं है।',demo:'डेमो मोड · काल्पनिक डेटा',notLegal:'इच्छा समझने का मतलब सहमति या कानूनी अनुमति देना नहीं है।',notReadyHelp:'आपका विकल्प “अभी बात नहीं करना चाहते” के रूप में दिखेगा।',language:'English',sourceLink:'NOTTO का मूल दस्तावेज़ देखें'}};
-const statusText:Record<Lang,Record<string,string>>={en:{invited:'Invited',viewed:'Viewed','wish understood':'Wish understood','question open':'Question open','conversation completed':'Conversation completed','declined to discuss':'Not ready to discuss'},hi:{invited:'आमंत्रित',viewed:'देखा','wish understood':'इच्छा समझी','question open':'सवाल खुला है','conversation completed':'बातचीत हुई','declined to discuss':'अभी बात नहीं करना चाहते'}};
-export default function InvitePage({params}:{params:Promise<{token:string}>}){const {token}=use(params);const [lang,setLang]=useState<Lang>('en'),[view,setView]=useState<View|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[choice,setChoice]=useState<'understand'|'question'|'not-ready'|'none'>('none'),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false);const t=T[lang];
-  useEffect(()=>{fetch(`/api/invite/${token}`,{cache:'no-store'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setView(d.invite);setQuestion(d.invite.question||'');}).catch(e=>setError(e.message)).finally(()=>setLoading(false));},[token]);
-  async function respond(action:string,kind?:string){setBusy(true);setError('');setNotice('');try{const r=await fetch(`/api/invite/${token}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,kind,question})});const d=await r.json();if(!r.ok)throw new Error(d.error);setView(d.invite);setNotice(action==='delete'?t.deleted:t.saved);setChoice('none');}catch(e){setError(e instanceof Error?e.message:'Request failed');}finally{setBusy(false);}}
-  return <div className="site-shell family-page" lang={lang}><header className="topbar"><div className="container topbar-inner"><a className="brand" href="/"><span className="brand-mark"><HeartHandshake size={20}/></span><span>Suno</span></a><div className="family-header-actions"><span className="mode-badge"><span/>{t.demo}</span><button className="language-switch" onClick={()=>setLang(lang==='en'?'hi':'en')}>{t.language}</button></div></div></header><main className="family-main"><div className="family-container"><a className="back-link" href="/">← {t.back}</a>{loading?<div className="panel" role="status">{t.loading}</div>:!view?<div className="panel"><h1>{t.invalid}</h1>{error&&<p role="alert">{error}</p>}</div>:<><div className="family-intro"><p className="eyebrow">A SPACE TO LISTEN</p><h1>{t.invited}</h1><p>{t.from}</p></div><section className="wish-quote"><span className="quote-icon"><MessageCircle/></span><div><p className="quote-label">{t.wish}</p><blockquote>{view.wish||'—'}</blockquote></div></section><section className="panel response-panel"><div className="panel-header"><span className="panel-icon"><CircleHelp/></span><div><h2>{t.choose}</h2><p>{t.notLegal}</p></div></div><div className="choice-grid"><button className={choice==='understand'?'choice selected':'choice'} onClick={()=>setChoice('understand')}><CheckCircle2 size={21}/><span>{t.understand}</span></button><button className={choice==='question'?'choice selected':'choice'} onClick={()=>setChoice('question')}><CircleHelp size={21}/><span>{t.question}</span></button><button className={choice==='not-ready'?'choice selected':'choice'} onClick={()=>setChoice('not-ready')}><MessageCircle size={21}/><span>{t.notReady}</span></button></div>{choice==='question'&&<div className="question-box"><label className="field-label" htmlFor="question">{t.ask}</label><textarea id="question" rows={4} maxLength={600} value={question} onChange={e=>setQuestion(e.target.value)} placeholder={t.placeholder}/><p className="field-meta">{question.length}/600</p></div>}{choice==='not-ready'&&<p className="subtle-note">{t.notReadyHelp}</p>}{choice!=='none'&&<div className="form-actions"><button className="button primary" disabled={busy||(choice==='question'&&!question.trim())} onClick={()=>respond('respond',choice)}>{choice==='question'?t.send:t.confirm}</button></div>}{notice&&<div className="notice success" role="status">{notice}</div>}{error&&<div className="notice error" role="alert">{error}</div>}</section>{view.result&&<section className="panel result-panel"><div className="panel-header"><span className="panel-icon"><BookOpen/></span><div><h2>{view.result.status==='supported'?t.answer:t.unsupported}</h2><p>{view.result.status==='unsupported'?t.open:''}</p></div></div>{view.result.status==='supported'&&<><p className="answer-text">{view.result.answer}</p><div className="source-card"><p className="source-kicker"><ShieldCheck size={16}/>{t.source}</p><strong>{view.result.source?.title}</strong><span>{view.result.source?.reference}</span><p className="excerpt-label">{t.excerpt}</p><blockquote lang="en">“{view.result.supportingExcerpt}”</blockquote><a href={view.result.source?.url} target="_blank" rel="noopener noreferrer">{t.sourceLink} <ExternalLink size={15}/></a></div></>}<div className="starter"><MessageCircle size={18}/><div><strong>{t.starter}</strong><p>{view.result.starter}</p></div></div>{view.status==='question open'&&view.result.status==='supported'&&<div className="form-actions"><button className="button secondary" onClick={()=>respond('discussed')} disabled={busy}>{lang==='hi'?'हमने इस पर बात की':'We discussed this'}</button></div>}</section>}{view.status!=='viewed'&&<div className="response-delete"><p>{t.yourResponse}: <strong>{statusText[lang][view.status]||view.status}</strong></p><button className="danger-button" onClick={()=>respond('delete')} disabled={busy}><Trash2 size={15}/>{t.delete}</button></div>}</>}<p className="family-disclaimer">{t.disclaimer}</p></div></main><footer className="footer"><div className="container footer-inner"><span className="footer-brand"><HeartHandshake size={18}/> Suno</span><p>{t.disclaimer}</p><a href="https://notto.mohfw.gov.in/" target="_blank" rel="noopener noreferrer">NOTTO <ExternalLink size={13}/></a></div></footer></div>;
+"use client";
+import { use, useEffect, useState } from "react";
+import {
+  BookOpen,
+  CheckCircle2,
+  CircleHelp,
+  ExternalLink,
+  HeartHandshake,
+  MessageCircle,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
+import type { Lang } from "@/lib/translations";
+type Result = {
+  category: string;
+  answer: string | null;
+  supportingExcerpt: string | null;
+  status: "supported" | "unsupported";
+  starter: string;
+  source?: { title: string; url: string; reference: string; excerpt: string };
+};
+type View = {
+  wish: string;
+  name: string;
+  status: string;
+  question?: string;
+  result?: Result;
+};
+const T = {
+  en: {
+    invited: "You have been invited to listen",
+    from: "A family member would like to share a personal wish with you. There is no pressure to respond in any particular way.",
+    wish: "Their wish",
+    choose: "How would you like to respond?",
+    understand: "I understand your wish",
+    question: "I have a question",
+    notReady: "I am not ready to discuss this",
+    ask: "Your question",
+    placeholder: "What would you like to ask?",
+    send: "Explore this question",
+    confirm: "Save my response",
+    answer: "What the source says",
+    source: "Official source",
+    excerpt: "Exact supporting excerpt",
+    starter: "A gentle way to continue",
+    unsupported: "I cannot verify an answer from the available sources.",
+    open: "This question remains open. You can discuss it with someone you trust or an official information service.",
+    yourResponse: "Your response",
+    delete: "Delete my response",
+    deleted: "Your response has been deleted.",
+    saved: "Your response has been saved.",
+    loading: "Opening private invitation…",
+    invalid: "This invitation is invalid or has expired.",
+    back: "Back to Suno",
+    disclaimer:
+      "This records a conversation. It is not an official pledge or legal consent.",
+    demo: "Demo mode · synthetic data",
+    notLegal:
+      "Understanding the wish does not mean you agree or give legal consent.",
+    notReadyHelp: "Your choice will be shown as “not ready to discuss.”",
+    language: "हिंदी",
+    sourceLink: "View original NOTTO document",
+  },
+  hi: {
+    invited: "आपको बातचीत के लिए आमंत्रित किया गया है",
+    from: "परिवार का एक सदस्य अपनी निजी इच्छा आपसे साझा करना चाहता है। किसी खास तरह से जवाब देने का दबाव नहीं है।",
+    wish: "उनकी इच्छा",
+    choose: "आप क्या कहना चाहेंगे?",
+    understand: "मैं आपकी इच्छा समझता/समझती हूँ",
+    question: "मेरा एक सवाल है",
+    notReady: "मैं अभी इस पर बात नहीं करना चाहता/चाहती",
+    ask: "आपका सवाल",
+    placeholder: "आप क्या पूछना चाहेंगे?",
+    send: "इस सवाल को समझें",
+    confirm: "मेरी प्रतिक्रिया सहेजें",
+    answer: "स्रोत क्या कहता है",
+    source: "आधिकारिक स्रोत",
+    excerpt: "स्रोत का सटीक अंश",
+    starter: "बात आगे बढ़ाने का सहज तरीका",
+    unsupported: "उपलब्ध स्रोतों से मैं इस सवाल का उत्तर सत्यापित नहीं कर सकता।",
+    open: "यह सवाल खुला है। आप किसी भरोसेमंद व्यक्ति या आधिकारिक जानकारी सेवा से बात कर सकते हैं।",
+    yourResponse: "आपकी प्रतिक्रिया",
+    delete: "मेरी प्रतिक्रिया हटाएँ",
+    deleted: "आपकी प्रतिक्रिया हटा दी गई है।",
+    saved: "आपकी प्रतिक्रिया सहेजी गई है।",
+    loading: "निजी आमंत्रण खुल रहा है…",
+    invalid: "यह आमंत्रण अमान्य है या इसकी समय सीमा समाप्त हो गई है।",
+    back: "Suno पर वापस जाएँ",
+    disclaimer:
+      "यह बातचीत का रिकॉर्ड है। यह आधिकारिक प्रतिज्ञा या कानूनी सहमति नहीं है।",
+    demo: "डेमो मोड · काल्पनिक डेटा",
+    notLegal: "इच्छा समझने का मतलब सहमति या कानूनी अनुमति देना नहीं है।",
+    notReadyHelp: "आपका विकल्प “अभी बात नहीं करना चाहते” के रूप में दिखेगा।",
+    language: "English",
+    sourceLink: "NOTTO का मूल दस्तावेज़ देखें",
+  },
+};
+const statusText: Record<Lang, Record<string, string>> = {
+  en: {
+    invited: "Invited",
+    viewed: "Viewed",
+    "wish understood": "Wish understood",
+    "question open": "Question open",
+    "conversation completed": "Conversation completed",
+    "declined to discuss": "Not ready to discuss",
+  },
+  hi: {
+    invited: "आमंत्रित",
+    viewed: "देखा",
+    "wish understood": "इच्छा समझी",
+    "question open": "सवाल खुला है",
+    "conversation completed": "बातचीत हुई",
+    "declined to discuss": "अभी बात नहीं करना चाहते",
+  },
+};
+export default function InvitePage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = use(params);
+  const [lang, setLang] = useState<Lang>("en"),
+    [view, setView] = useState<View | null>(null),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [choice, setChoice] = useState<
+      "understand" | "question" | "not-ready" | "none"
+    >("none"),
+    [question, setQuestion] = useState(""),
+    [busy, setBusy] = useState(false);
+  const t = T[lang];
+  useEffect(() => {
+    fetch(`/api/invite/${token}`, { cache: "no-store" })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        setView(d.invite);
+        setQuestion(d.invite.question || "");
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [token]);
+  const [answerMode, setAnswerMode] = useState("");
+  async function respond(action: string, kind?: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const r = await fetch(`/api/invite/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, kind, question }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setView(d.invite);
+      if (d.mode) setAnswerMode(d.mode);
+      setNotice(
+        action === "follow-up"
+          ? lang === "hi"
+            ? "कोऑर्डिनेटर फॉलो-अप माँगा गया।"
+            : "Coordinator follow-up requested."
+          : action === "delete"
+            ? t.deleted
+            : t.saved,
+      );
+      setChoice("none");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="site-shell family-page" lang={lang}>
+      <header className="topbar">
+        <div className="container topbar-inner">
+          <a className="brand" href="/">
+            <span className="brand-mark">
+              <HeartHandshake size={20} />
+            </span>
+            <span>Suno</span>
+          </a>
+          <div className="family-header-actions">
+            <span className="mode-badge">
+              <span />
+              {t.demo}
+            </span>
+            <button
+              className="language-switch"
+              onClick={() => setLang(lang === "en" ? "hi" : "en")}
+            >
+              {t.language}
+            </button>
+          </div>
+        </div>
+      </header>
+      <main className="family-main">
+        <div className="family-container">
+          <a className="back-link" href="/">
+            ← {t.back}
+          </a>
+          {loading ? (
+            <div className="panel" role="status">
+              {t.loading}
+            </div>
+          ) : !view ? (
+            <div className="panel">
+              <h1>{t.invalid}</h1>
+              {error && <p role="alert">{error}</p>}
+            </div>
+          ) : (
+            <>
+              <div className="family-intro">
+                <p className="eyebrow">A SPACE TO LISTEN</p>
+                <h1>{t.invited}</h1>
+                <p>{t.from}</p>
+              </div>
+              <section className="wish-quote">
+                <span className="quote-icon">
+                  <MessageCircle />
+                </span>
+                <div>
+                  <p className="quote-label">{t.wish}</p>
+                  <blockquote>{view.wish || "—"}</blockquote>
+                </div>
+              </section>
+              <section className="panel response-panel">
+                <div className="panel-header">
+                  <span className="panel-icon">
+                    <CircleHelp />
+                  </span>
+                  <div>
+                    <h2>{t.choose}</h2>
+                    <p>{t.notLegal}</p>
+                  </div>
+                </div>
+                <div className="choice-grid">
+                  <button
+                    className={
+                      choice === "understand" ? "choice selected" : "choice"
+                    }
+                    onClick={() => setChoice("understand")}
+                  >
+                    <CheckCircle2 size={21} />
+                    <span>{t.understand}</span>
+                  </button>
+                  <button
+                    className={
+                      choice === "question" ? "choice selected" : "choice"
+                    }
+                    onClick={() => setChoice("question")}
+                  >
+                    <CircleHelp size={21} />
+                    <span>{t.question}</span>
+                  </button>
+                  <button
+                    className={
+                      choice === "not-ready" ? "choice selected" : "choice"
+                    }
+                    onClick={() => setChoice("not-ready")}
+                  >
+                    <MessageCircle size={21} />
+                    <span>{t.notReady}</span>
+                  </button>
+                </div>
+                {choice === "question" && (
+                  <div className="question-box">
+                    <label className="field-label" htmlFor="question">
+                      {t.ask}
+                    </label>
+                    <textarea
+                      id="question"
+                      rows={4}
+                      maxLength={600}
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      placeholder={t.placeholder}
+                    />
+                    <p className="field-meta">{question.length}/600</p>
+                  </div>
+                )}
+                {choice === "not-ready" && (
+                  <p className="subtle-note">{t.notReadyHelp}</p>
+                )}
+                {choice !== "none" && (
+                  <div className="form-actions">
+                    <button
+                      className="button primary"
+                      disabled={
+                        busy || (choice === "question" && !question.trim())
+                      }
+                      onClick={() => respond("respond", choice)}
+                    >
+                      {choice === "question" ? t.send : t.confirm}
+                    </button>
+                  </div>
+                )}
+                {notice && (
+                  <div className="notice success" role="status">
+                    {notice}
+                  </div>
+                )}
+                {error && (
+                  <div className="notice error" role="alert">
+                    {error}
+                  </div>
+                )}
+              </section>
+              {view.result && (
+                <section className="panel result-panel">
+                  <p className="subtle-note">
+                    {answerMode === "live-ai"
+                      ? "Live AI source selection · reviewed answer text"
+                      : "Predefined reviewed demo answer · not live AI"}
+                  </p>
+                  <div className="panel-header">
+                    <span className="panel-icon">
+                      <BookOpen />
+                    </span>
+                    <div>
+                      <h2>
+                        {view.result.status === "supported"
+                          ? t.answer
+                          : t.unsupported}
+                      </h2>
+                      <p>
+                        {view.result.status === "unsupported" ? t.open : ""}
+                      </p>
+                    </div>
+                  </div>
+                  {view.result.status === "supported" && (
+                    <>
+                      <p className="answer-text">{view.result.answer}</p>
+                      <div className="source-card">
+                        <p className="source-kicker">
+                          <ShieldCheck size={16} />
+                          {t.source}
+                        </p>
+                        <strong>{view.result.source?.title}</strong>
+                        <span>{view.result.source?.reference}</span>
+                        <p className="excerpt-label">{t.excerpt}</p>
+                        <blockquote lang="en">
+                          “{view.result.supportingExcerpt}”
+                        </blockquote>
+                        <a
+                          href={view.result.source?.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {t.sourceLink} <ExternalLink size={15} />
+                        </a>
+                      </div>
+                    </>
+                  )}
+                  <div className="starter">
+                    <MessageCircle size={18} />
+                    <div>
+                      <strong>{t.starter}</strong>
+                      <p>{view.result.starter}</p>
+                    </div>
+                  </div>
+                  {view.result.status === "unsupported" && (
+                    <button
+                      className="button outline"
+                      disabled={busy}
+                      onClick={() => respond("follow-up")}
+                    >
+                      {lang === "hi"
+                        ? "कोऑर्डिनेटर फॉलो-अप माँगें"
+                        : "Request coordinator follow-up"}
+                    </button>
+                  )}
+                  {view.status === "question open" &&
+                    view.result.status === "supported" && (
+                      <div className="form-actions">
+                        <button
+                          className="button secondary"
+                          onClick={() => respond("discussed")}
+                          disabled={busy}
+                        >
+                          {lang === "hi"
+                            ? "हमने इस पर बात की"
+                            : "We discussed this"}
+                        </button>
+                      </div>
+                    )}
+                </section>
+              )}
+              {view.status !== "viewed" && (
+                <div className="response-delete">
+                  <p>
+                    {t.yourResponse}:{" "}
+                    <strong>
+                      {statusText[lang][view.status] || view.status}
+                    </strong>
+                  </p>
+                  <button
+                    className="danger-button"
+                    onClick={() => respond("delete")}
+                    disabled={busy}
+                  >
+                    <Trash2 size={15} />
+                    {t.delete}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+          <p className="family-disclaimer">{t.disclaimer}</p>
+        </div>
+      </main>
+      <footer className="footer">
+        <div className="container footer-inner">
+          <span className="footer-brand">
+            <HeartHandshake size={18} /> Suno
+          </span>
+          <p>{t.disclaimer}</p>
+          <a
+            href="https://notto.mohfw.gov.in/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            NOTTO <ExternalLink size={13} />
+          </a>
+        </div>
+      </footer>
+    </div>
+  );
 }
