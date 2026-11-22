@@ -18,7 +18,7 @@ const unavailable = () =>
 export async function GET(_req: NextRequest, { params }: Context) {
   const { token } = await params;
   const view = safeFamilyView(token);
-  return view ? privateJson({ invite: view, mode: "demo" }) : unavailable();
+  return view ? privateJson({ invite: view, mode: view.result?.confidence === "ai-routed" ? "live-ai" : "demo" }) : unavailable();
 }
 export async function POST(req: NextRequest, { params }: Context) {
   const { token } = await params;

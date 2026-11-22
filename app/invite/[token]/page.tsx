@@ -14,6 +14,7 @@ import type { Lang } from "@/lib/translations";
 import { requestJson } from "@/lib/client-api";
 import { useDocumentLanguage } from "@/lib/use-document-language";
 type Result = {
+  confidence?: "reviewed-example" | "ai-routed" | "insufficient";
   category: string;
   answer: string | null;
   supportingExcerpt: string | null;
@@ -156,7 +157,7 @@ export default function InvitePage({
       });
     return () => controller.abort();
   }, [token]);
-  const [answerMode, setAnswerMode] = useState("");
+  const answerMode = view?.result?.confidence === "ai-routed" ? "live-ai" : "demo";
   async function respond(action: string, kind?: string) {
     setBusy(true);
     setError("");
@@ -171,7 +172,6 @@ export default function InvitePage({
         },
       );
       setView(d.invite);
-      if (d.mode) setAnswerMode(d.mode);
       setNotice(
         action === "follow-up"
           ? lang === "hi"

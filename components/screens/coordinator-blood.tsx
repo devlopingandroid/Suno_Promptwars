@@ -35,6 +35,9 @@ export default function CoordinatorBlood({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const filteredRequests = data.requests.filter((item) =>
+    `${item.title} ${item.location} ${item.bloodGroup} ${item.status}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
   const [form, setForm] = useState({
     title: "",
     location: "",
@@ -43,7 +46,7 @@ export default function CoordinatorBlood({
     instructions: "",
   });
   const request =
-    data.requests.find((item) => item.id === selected) ?? data.requests[0];
+    filteredRequests.find((item) => item.id === selected) ?? filteredRequests[0];
   async function create() {
     if (
       !(await mutate({
@@ -185,13 +188,8 @@ export default function CoordinatorBlood({
           icon={<ClipboardList size={18} />}
         >
           <div className="request-table">
-            {data.requests
-              .filter((item) =>
-                `${item.title} ${item.location} ${item.bloodGroup} ${item.status}`
-                  .toLowerCase()
-                  .includes(search.toLowerCase()),
-              )
-              .map((item) => (
+            {filteredRequests.length === 0 && <p className="empty-inline" role="status">{lang === "hi" ? "कोई मेल खाती रिक्वेस्ट नहीं मिली।" : "No requests match your search."}</p>}
+            {filteredRequests.map((item) => (
                 <button
                   className={`request-table-row ${request?.id === item.id ? "selected" : ""}`}
                   key={item.id}

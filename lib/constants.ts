@@ -2,7 +2,8 @@
 export const MAX_WISH_LENGTH = 800;
 export const MAX_QUESTION_LENGTH = 600;
 export const MAX_INSTRUCTION_LENGTH = 300;
-export const MAX_BODY_SIZE = 12_000;
+// A 4,000-character Hindi summary takes 12,000 UTF-8 bytes, plus JSON fields.
+export const MAX_BODY_SIZE = 16_384;
 export const MAX_NAME_LENGTH = 40;
 export const MAX_INVITES = 3;
 export const SESSION_TTL_MS = 86_400_000; // 24 hours

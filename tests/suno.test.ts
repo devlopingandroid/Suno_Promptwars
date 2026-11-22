@@ -22,6 +22,16 @@ import {
 } from "../lib/store";
 
 describe("source-grounded answers", () => {
+  it.each([
+    "Who pays for the funeral?",
+    "How much does parking cost?",
+    "What will the weather look like tomorrow?",
+    "What will the weather look like on organ donation day?",
+    "Will my face look different after dental surgery?",
+    "Should I discuss my holiday with my family?",
+  ])("rejects unrelated questions: %s", (question) => {
+    expect(answerConcern(question)).toMatchObject({status:"unsupported", answer:null, sourceId:null});
+  });
   it("answers a Hindi body concern with the reviewed NOTTO excerpt", () => {
     const result = answerConcern("क्या अंगदान के बाद शरीर का चेहरा बदल जाएगा?");
     expect(result.status).toBe("supported");

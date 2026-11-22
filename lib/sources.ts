@@ -101,19 +101,26 @@ export function answerConcern(
     category = routed ?? classifyConcern(question);
   // A broad category alone is not evidence. Match only the narrow issue addressed by each excerpt.
   const q = question.toLowerCase();
+  const donationContext = /organ\s+donat|tissue\s+donat|donat\w*\s+(?:an?\s+)?(?:organ|tissue)|अंगदान|अंग\s*दान|ऊतक\s*दान/.test(q);
+  // Keep the short reviewed walkthrough example, without treating any occurrence
+  // of "look", "cost", or "family" as evidence for an unrelated question.
+  const reviewedBodyExample = /^(will|does|would) (the|my) body (look different|be disfigured)\??$/.test(q.trim());
+  const costQuestion = /cost|charg|pay|money|fee|खर्च|पैस|शुल्क/.test(q);
   const excluded =
     /eligib|diabet|cancer|hiv|compatib|match|legal|consent|religio|faith|blood|sell|price|payment|\bage\b|infection|risk|दवा|बीमारी|मधुमेह|कैंसर|पात्र|कानून|सहमति|धर्म|रक्त|खून|कीमत/.test(
       q,
     );
   const bodyAppearance =
+    (donationContext || reviewedBodyExample) && !costQuestion &&
+    /body|face|disfigur|funeral|शरीर|चेहर|विकृत|अंतिम दर्शन/.test(q) &&
     /disfigur|look|appear|face|funeral|चेहर|दिखे|विकृत|अंतिम दर्शन/.test(q);
   const donationCost =
-    /cost|charg|pay|fee|खर्च|पैस|शुल्क/.test(q) &&
+    donationContext && costQuestion &&
     !/travel|transport|funeral|hospital bill|treatment|यात्रा|अंतिम संस्कार|इलाज/.test(
       q,
     );
   const familyDiscussion =
-    /family|परिवार|discuss|बातचीत/.test(q) &&
+    donationContext && /family|परिवार|discuss|बातचीत/.test(q) &&
     /discuss|talk|tell|share|बात|बताए|साझा/.test(q);
   const source =
     !excluded && category === "body" && bodyAppearance

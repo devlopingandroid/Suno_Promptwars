@@ -26,6 +26,7 @@ import { resolveConcern } from "../lib/ai";
 import { sources } from "../lib/sources";
 import { POST as assist } from "../app/api/assist/route";
 import { POST as bootstrap } from "../app/api/bootstrap/route";
+import { POST as circleWrite } from "../app/api/circle/route";
 import { POST as familyWrite } from "../app/api/invite/[token]/route";
 
 const url = "http://localhost:3000/api/assist";
@@ -56,6 +57,13 @@ afterEach(() => {
 });
 
 describe("request boundaries", () => {
+  it("accepts a full 4000-character Hindi summary", async () => {
+    const { cookie } = actor();
+    const summary = "अ".repeat(4000);
+    const response = await circleWrite(json({action:"summary", summary}, {cookie}));
+    expect(response.status).toBe(200);
+    expect((await response.json()).circle.summary).toBe(summary);
+  });
   it("accepts Cloud Run HTTPS termination without trusting forwarded host", () => {
     const headers = {
       host: "suno.example.run.app",
@@ -100,7 +108,7 @@ describe("request boundaries", () => {
     ).rejects.toThrow("Expected JSON");
   });
   it("measures bytes, including multi-byte Hindi text", async () => {
-    await expect(readBody(json({ text: "अ".repeat(5000) }))).rejects.toThrow(
+    await expect(readBody(json({ text: "अ".repeat(Math.ceil(MAX_BODY_SIZE / 3)) }))).rejects.toThrow(
       "too large",
     );
     const overhead = JSON.stringify({ text: "" }).length;
